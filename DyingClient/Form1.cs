@@ -85,19 +85,26 @@ namespace DyingClient
         var fromPort = ((IPEndPoint)tcp.Client.RemoteEndPoint).Port;
         var stream = tcp.GetStream();
         var buffer = new byte[1024];
-        stream.Read(buffer, 0, 6);
-        var toIp = BitConverter.ToInt32(buffer, 0);
-        var toPort = (int)BitConverter.ToUInt16(buffer, 4);
-        _tcpIncoming.Add(Tuple.Create(toIp,toPort, fromPort), tcp);
-        await _hp.Invoke("TcpConnect", toIp, toPort, fromPort);
-        AppendLine($"TcpConnect to={new IPAddress(toIp)}:{toPort} from={fromPort}");
-        while (stream.DataAvailable)
+        try
         {
-          var count = stream.Read(buffer, 0, 1024);
-          var data = new byte[count];
-          Buffer.BlockCopy(buffer, 0, data, 0, count);
-          await _hp.Invoke("TcpSend",fromPort, toIp, toPort, data);
-          AppendLine($"TcpSend to={new IPAddress(toIp)}:{toPort} from={fromPort} data={BitConverter.ToString(data)}");
+          stream.Read(buffer, 0, 6);
+          var toIp = BitConverter.ToInt32(buffer, 0);
+          var toPort = (int)BitConverter.ToUInt16(buffer, 4);
+          _tcpIncoming.Add(Tuple.Create(toIp, toPort, fromPort), tcp);
+          await _hp.Invoke("TcpConnect", toIp, toPort, fromPort);
+          AppendLine($"TcpConnect to={new IPAddress(toIp)}:{toPort} from={fromPort}");
+          while (stream.DataAvailable)
+          {
+            var count = stream.Read(buffer, 0, 1024);
+            var data = new byte[count];
+            Buffer.BlockCopy(buffer, 0, data, 0, count);
+            await _hp.Invoke("TcpSend", fromPort, toIp, toPort, data);
+            AppendLine($"TcpSend to={new IPAddress(toIp)}:{toPort} from={fromPort} data={BitConverter.ToString(data)}");
+          }
+        }
+        catch(IOException)
+        {
+
         }
       });
     }
@@ -137,6 +144,7 @@ namespace DyingClient
     private async void OnTcpConnect(int fromVip, int fromPort, int toPort)
     {
       var tcpIncoming = new TcpClient("localhost", toPort);
+      tcpIncoming.NoDelay = true;
       _tcpIncoming[Tuple.Create(fromVip, fromPort, toPort)] = tcpIncoming;
       var stream = tcpIncoming.GetStream();
       stream.Write(BitConverter.GetBytes(fromVip), 0, 4);

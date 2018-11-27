@@ -32,6 +32,13 @@ namespace Injector
       Port1 = 123,
       Port2 = 123,
     };
+    private SockAddr _tcpOutgoing = new SockAddr
+    {
+      Family = (short)AddressFamily.InterNetwork,
+      IP = 0x100007f,
+      Port1 = 123,
+      Port2 = 123,
+    };
 
     [DllImport("kernel32")]
     internal static extern void CopyMemory(IntPtr dest, IntPtr src, int count);
@@ -43,6 +50,9 @@ namespace Injector
 
     [DllImport("ws2_32")]
     internal static extern SocketError WSARecvFrom(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesRecvd, ref int flags, out SockAddr from, out int fromLen, IntPtr overlapped, IntPtr completionRoutine);
+
+    [DllImport("ws2_32")]
+    internal static extern int WSASend(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesSent, int flags, IntPtr overlapped, IntPtr completionRoutine);
 
     [DllImport("ws2_32")]
     internal static extern SocketError bind(int socket, ref SockAddr addr, int addrLen);
@@ -72,7 +82,7 @@ namespace Injector
 
     [DllImport("kernel32", CharSet = CharSet.Ansi)]
     internal static extern IntPtr LoadLibraryA(string fileName);
-    [DllImport("ws2_32", CharSet = CharSet.Ansi,ExactSpelling =true)]
+    [DllImport("ws2_32", CharSet = CharSet.Ansi, ExactSpelling = true)]
     internal static extern SocketError gethostname(StringBuilder name, int nameLen);
     [DllImport("ws2_32", CharSet = CharSet.Ansi)]
     internal static extern IntPtr gethostbyname(string name);
@@ -102,6 +112,11 @@ namespace Injector
     internal delegate SocketError GetHostNameD(IntPtr name, int nameLen);
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Ansi)]
     internal delegate IntPtr GetHostByNameD(IntPtr name);
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    internal delegate int WSASendD(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesSent, int flags, IntPtr overlapped, IntPtr completionRoutine);
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    internal delegate int RecvD(int socket, IntPtr buff, int len, int flags);
+
 
     public HookEntryPoint(RemoteHooking.IContext context, string channel, string dllPath, int vip, string userId)
     {
@@ -143,6 +158,12 @@ namespace Injector
       hGetHostName.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hGetHostByName = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "gethostbyname"), new GetHostByNameD(GetHostByNameH), this);
       hGetHostByName.ThreadACL.SetExclusiveACL(new[] { 0 });
+      var hSend = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "send"), new SendD(SendH), this);
+      hSend.ThreadACL.SetExclusiveACL(new[] { 0 });
+      var hWSASend = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "WSASend"), new WSASendD(WSASendH), this);
+      hWSASend.ThreadACL.SetExclusiveACL(new[] { 0 });
+      var hRecv = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "recv"), new RecvD(RecvH), this);
+      hRecv.ThreadACL.SetExclusiveACL(new[] { 0 });
       RemoteHooking.WakeUpProcess();
       Thread.Sleep(Timeout.Infinite);
     }
@@ -157,6 +178,7 @@ namespace Injector
         Marshal.WriteByte(pBuff + 5, to.Port1);
         CopyMemory(pBuff + 6, buff, len);
         sendto(socket, pBuff, len + 6, flags, ref _udpOutgoing, toLen);
+        _server.Echo($"Hook sendto to={to}->{_udpOutgoing} len={len}");
         Marshal.FreeHGlobal(pBuff);
         return len;
 
@@ -176,6 +198,7 @@ namespace Injector
         from.Port2 = Marshal.ReadByte(buff + 4);
         from.Port1 = Marshal.ReadByte(buff + 5);
         CopyMemory(buff, buff + 6, result - 6);
+        _server.Echo($"Hook recvfrom from={from} len={result}");
         return result - 6;
       }
       else
@@ -204,25 +227,18 @@ namespace Injector
         from.Port1 = Marshal.ReadByte(buffers.Buf + 5);
         CopyMemory(buffers.Buf, buffers.Buf + 6, numberOfBytesRecvd - 6);
         numberOfBytesRecvd = numberOfBytesRecvd - 6;
+        _server.Echo($"Hook WSARecvFrom from={from} len={numberOfBytesRecvd}");
       }
       return result;
     }
 
     private SocketError ConnectH(int socket, ref SockAddr addr, int addrLen)
     {
-      _server.Echo($"Before connect socket={socket} addr={addr}");
       if ((addr.IP & 0xff) == 10)
       {
-
-        var addrProxy = new SockAddr
-        {
-          Family = addr.Family,
-          IP = 0x100007f,
-          Port1 = 123,
-          Port2 = 123,
-        };
-        var ret = connect(socket, ref addrProxy, addrLen);
-        _server.Echo($"After connect socket={socket} addr={addrProxy} ret={ret}");
+        var ret = connect(socket, ref _tcpOutgoing, addrLen);
+        _dicTcp[socket] = addr;
+        _server.Echo($"Hook connect addr={addr}->{_tcpOutgoing}");
         if (ret == SocketError.Success)
         {
           var pBuff = Marshal.AllocHGlobal(6);
@@ -260,7 +276,6 @@ namespace Injector
     private int AcceptH(int socket, out SockAddr addr, ref int addrLen)
     {
       var ret = accept(socket, out addr, ref addrLen);
-      _server.Echo($"After accept socket={socket} addr={addr}");
       if (addr.IP == 0x100007f)
       {
         var buff = Marshal.AllocHGlobal(6);
@@ -270,7 +285,7 @@ namespace Injector
         addr.Port2 = Marshal.ReadByte(buff + 5);
         _dicTcp[ret] = addr;
         Marshal.FreeHGlobal(buff);
-        _server.Echo($"Hook accept socket={socket} addr={addr}");
+        _server.Echo($"Hook accept socket={ret} addr={addr}");
       }
       return ret;
     }
@@ -278,14 +293,13 @@ namespace Injector
     private SocketError GetPeerNameH(int socket, out SockAddr name, out int nameLen)
     {
       var ret = getpeername(socket, out name, out nameLen);
-      _server.Echo($"After getpeername socket={socket} addr={name}");
       if (ret == SocketError.Success && name.IP == 0x100007f && name.Port1 == 123 && name.Port2 == 123)
       {
         var addr = _dicTcp[socket];
         name.IP = addr.IP;
         name.Port1 = addr.Port1;
         name.Port2 = addr.Port2;
-        _server.Echo($"Hook getpeername socket={socket} addr={name}");
+        _server.Echo($"Hook getpeername addr={name}");
       }
       return ret;
     }
@@ -307,7 +321,7 @@ namespace Injector
 
     private SocketError GetHostNameH(IntPtr name, int nameLen)
     {
-      var bytes = Encoding.ASCII.GetBytes(_userId.ToString()+"\0");
+      var bytes = Encoding.ASCII.GetBytes(_userId.ToString() + "\0");
       Marshal.Copy(bytes, 0, name, bytes.Length);
       return SocketError.Success;
     }
@@ -319,7 +333,7 @@ namespace Injector
       if (name == _userId)
       {
         ret = gethostbyname(_hostName);
-        var he =(HostEnt) Marshal.PtrToStructure(ret, typeof(HostEnt));
+        var he = (HostEnt)Marshal.PtrToStructure(ret, typeof(HostEnt));
         Marshal.WriteInt32(Marshal.ReadIntPtr(he.AddrList), _vip);
         Marshal.StructureToPtr(he, ret, false);
       }
@@ -329,6 +343,38 @@ namespace Injector
       }
       return ret;
     }
+
+    private int SendH(int socket, IntPtr buff, int len, int flags)
+    {
+      if (_dicTcp.TryGetValue(socket, out var peer))
+      {
+        _server.Echo($"Hook send to={peer} len={len}");
+      }
+      return send(socket, buff, len, flags);
+    }
+
+    private int WSASendH(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesSent, int flags, IntPtr overlapped, IntPtr completionRoutine)
+    {
+      var ret = WSASend(socket, ref buffers, bufferCount, out numberOfBytesSent, flags, overlapped, completionRoutine);
+      if (_dicTcp.TryGetValue(socket, out var peer))
+      {
+        _server.Echo($"Hook WSASend to={peer} len={numberOfBytesSent}");
+      }
+      return ret;
+    }
+
+    private int RecvH(int socket, IntPtr buff, int len, int flags)
+    {
+      _server.Echo($"Before recv socket={socket}");
+      var ret = recv(socket, buff, len, flags);
+      _server.Echo($"After recv socket={socket} len={ret}");
+      if (_dicTcp.TryGetValue(socket, out var peer))
+      {
+        _server.Echo($"Hook recv from={peer} len={ret}");
+      }
+      return ret;
+    }
+
   }
 
   [StructLayout(LayoutKind.Sequential)]
