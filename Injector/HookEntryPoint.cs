@@ -96,11 +96,12 @@ namespace Injector
       var ret = DllImports.accept(socket, out addr, ref addrLen);
       if (addr.IP == LOCALHOST)
       {
-        var buff = Marshal.AllocHGlobal(6);
-        DllImports.recv(ret, buff, 6, 0);
+        var buff = Marshal.AllocHGlobal(8);
+        DllImports.recv(ret, buff, 8, 0);
         addr.IP = Marshal.ReadInt32(buff);
-        addr.Port1 = Marshal.ReadByte(buff + 4);
-        addr.Port2 = Marshal.ReadByte(buff + 5);
+        var remotePort = Marshal.ReadInt32(buff + 4);
+        addr.Port1 = (byte)(remotePort>>16);
+        addr.Port2 = (byte)(remotePort>>24);
         var siListen = _dicSockets[socket];
         var siAccept=new SocketInfo
         {
@@ -108,7 +109,7 @@ namespace Injector
           LocalIp = siListen.LocalIp,
           LocalPort = siListen.LocalPort,
           RemoteIp = new IPAddress(addr.IP),
-          RemotePort = addr.Port1 * 256 + addr.Port2,
+          RemotePort = remotePort,
         };
         _dicSockets[ret] = siAccept;
         Marshal.FreeHGlobal(buff);
@@ -160,11 +161,10 @@ namespace Injector
         ret = DllImports.connect(socket, ref _tcpOutgoing, addrLen);
         if (ret == SocketError.Success)
         {
-          var pBuff = Marshal.AllocHGlobal(6);
+          var pBuff = Marshal.AllocHGlobal(8);
           Marshal.WriteInt32(pBuff, addr.IP);
-          Marshal.WriteByte(pBuff + 4, addr.Port2);
-          Marshal.WriteByte(pBuff + 5, addr.Port1);
-          DllImports.send(socket, pBuff, 6, 0);
+          Marshal.WriteInt32(pBuff + 4, addr.Port1 * 256 + addr.Port2);
+          DllImports.send(socket, pBuff, 8, 0);
           Marshal.FreeHGlobal(pBuff);
         }
         else if (ret == SocketError.SocketError && DllImports.WSAGetLastError() == SocketError.WouldBlock)
@@ -176,11 +176,10 @@ namespace Injector
           };
           var except = write;
           DllImports.select(0, IntPtr.Zero, ref write, ref except, IntPtr.Zero);
-          var pBuff = Marshal.AllocHGlobal(6);
+          var pBuff = Marshal.AllocHGlobal(8);
           Marshal.WriteInt32(pBuff, addr.IP);
-          Marshal.WriteByte(pBuff + 4, addr.Port2);
-          Marshal.WriteByte(pBuff + 5, addr.Port1);
-          DllImports.send(socket, pBuff, 6, 0);
+          Marshal.WriteInt32(pBuff + 4, addr.Port1 * 256 + addr.Port2);
+          DllImports.send(socket, pBuff, 8, 0);
           Marshal.FreeHGlobal(pBuff);
           DllImports.WSASetLastError(SocketError.WouldBlock);
         }

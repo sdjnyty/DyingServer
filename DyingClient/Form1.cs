@@ -26,6 +26,7 @@ namespace DyingClient
     private UdpClient _udpOutgoing = new UdpClient(123 * 256 + 123);
     private UdpClient _udpIncoming = new UdpClient(122 * 256 + 122);
     private TcpListener _tcpOutgoing = new TcpListener(IPAddress.Loopback, 123 * 256 + 123);
+    //Tuple<RemoteIp,RemotePort,LocalPort>
     private Dictionary<Tuple< int,int,int>, TcpClient> _tcpIncoming = new Dictionary<Tuple< int,int,int>, TcpClient>();
     private int _vip;
 
@@ -82,24 +83,24 @@ namespace DyingClient
     {
       await Task.Run(async () =>
       {
-        var fromPort = ((IPEndPoint)tcp.Client.RemoteEndPoint).Port;
+        var localPort = ((IPEndPoint)tcp.Client.RemoteEndPoint).Port;
         var stream = tcp.GetStream();
         var buffer = new byte[1024];
         try
         {
-          stream.Read(buffer, 0, 6);
-          var toIp = BitConverter.ToInt32(buffer, 0);
-          var toPort = (int)BitConverter.ToUInt16(buffer, 4);
-          _tcpIncoming.Add(Tuple.Create(toIp, toPort, fromPort), tcp);
-          await _hp.Invoke("TcpConnect", toIp, toPort, fromPort);
-          AppendLine($"TcpConnect to={new IPAddress(toIp)}:{toPort} from={fromPort}");
+          stream.Read(buffer, 0, 8);
+          var remoteIp = BitConverter.ToInt32(buffer, 0);
+          var remotePort = BitConverter.ToInt32(buffer, 4);
+          _tcpIncoming.Add(Tuple.Create(remoteIp, remotePort, localPort), tcp);
+          await _hp.Invoke("TcpConnect", remoteIp, remotePort, localPort);
+          AppendLine($"TcpConnect to={new IPAddress(remoteIp)}:{remotePort} from={localPort}");
           while (stream.DataAvailable)
           {
             var count = stream.Read(buffer, 0, 1024);
             var data = new byte[count];
             Buffer.BlockCopy(buffer, 0, data, 0, count);
-            await _hp.Invoke("TcpSend", fromPort, toIp, toPort, data);
-            AppendLine($"TcpSend to={new IPAddress(toIp)}:{toPort} from={fromPort} data={BitConverter.ToString(data)}");
+            await _hp.Invoke("TcpSend", localPort, remoteIp, remotePort, data);
+            AppendLine($"TcpSend to={new IPAddress(remoteIp)}:{remotePort} from={localPort} data={BitConverter.ToString(data)}");
           }
         }
         catch(IOException)
@@ -141,16 +142,14 @@ namespace DyingClient
       }
     }
 
-    private async void OnTcpConnect(int fromVip, int fromPort, int toPort)
+    private async void OnTcpConnect(int remoteIp, int remotePort, int localPort)
     {
-      var tcpIncoming = new TcpClient("localhost", toPort);
-      tcpIncoming.NoDelay = true;
-      _tcpIncoming[Tuple.Create(fromVip, fromPort, toPort)] = tcpIncoming;
+      var tcpIncoming = new TcpClient(AddressFamily.InterNetwork);
+      await tcpIncoming.ConnectAsync(IPAddress.Loopback, localPort);
+      _tcpIncoming[Tuple.Create(remoteIp, remotePort, localPort)] = tcpIncoming;
       var stream = tcpIncoming.GetStream();
-      stream.Write(BitConverter.GetBytes(fromVip), 0, 4);
-      var usFromPort = BitConverter.GetBytes((ushort)fromPort);
-      stream.WriteByte(usFromPort[1]);
-      stream.WriteByte(usFromPort[0]);
+      stream.Write(BitConverter.GetBytes(remoteIp), 0, 4);
+      stream.Write(BitConverter.GetBytes(remotePort), 0, 4);
       var buffer = new byte[1024];
       await Task.Run(async () =>
       {
@@ -159,16 +158,16 @@ namespace DyingClient
           var count = stream.Read(buffer, 0, 1024);
           var data = new byte[count];
           Buffer.BlockCopy(buffer, 0, data, 0, count);
-          await _hp.Invoke("TcpSend", toPort, fromVip,fromPort, data);
-          AppendLine($"TcpSend from=:{toPort} to={new IPAddress(fromVip)}:{fromPort}");
+          await _hp.Invoke("TcpSend", localPort, remoteIp,remotePort, data);
+          AppendLine($"TcpSend from=:{localPort} to={new IPAddress(remoteIp)}:{remotePort}");
         }
       });
     }
 
-    private void OnTcpSend(int fromIp,int fromPort,int toPort, byte[] data)
+    private void OnTcpSend(int remoteIp,int remotePort,int localPort, byte[] data)
     {
-      var tcpIncoming = _tcpIncoming[Tuple.Create(fromIp, fromPort, toPort)];
-      AppendLine($"OnTcpSend from={new IPAddress(fromIp)}:{fromPort} to={toPort} data={BitConverter.ToString( data)}");
+      var tcpIncoming = _tcpIncoming[Tuple.Create(remoteIp, remotePort, localPort)];
+      AppendLine($"OnTcpSend from={new IPAddress(remoteIp)}:{remotePort} to={localPort} data={BitConverter.ToString( data)}");
       tcpIncoming.GetStream().Write(data, 0, data.Length);
     }
 
