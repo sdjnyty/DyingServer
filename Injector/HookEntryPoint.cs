@@ -21,6 +21,7 @@ namespace Injector
     private string _dllPath;
     private string _hostName;
     private ConcurrentDictionary<int, SocketInfo> _dicSockets = new ConcurrentDictionary<int, SocketInfo>();
+    private string _moduleName;
     private SockAddr _udpOutgoing = new SockAddr
     {
       Family = (short)AddressFamily.InterNetwork,
@@ -48,7 +49,7 @@ namespace Injector
 
     public void Run(RemoteHooking.IContext context, string channel, string dllPath, int vip, string userId)
     {
-      var moduleName = Process.GetCurrentProcess().ProcessName;
+      _moduleName = Process.GetCurrentProcess().ProcessName;
       var hSendTo = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "sendto"), new Delegates.SendTo(SendTo), this);
       hSendTo.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hRecvFrom = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "recvfrom"), new Delegates.RecvFrom(RecvFrom), this);
@@ -97,13 +98,17 @@ namespace Injector
       if (addr.IP == LOCALHOST)
       {
         var buff = Marshal.AllocHGlobal(8);
-        DllImports.recv(ret, buff, 8, 0);
+        var count = 0;
+        while (count < 8)
+        {
+          count += DllImports.recv(ret, buff, 8 - count, 0);
+        }
         addr.IP = Marshal.ReadInt32(buff);
         var remotePort = Marshal.ReadInt32(buff + 4);
-        addr.Port1 = (byte)(remotePort>>16);
-        addr.Port2 = (byte)(remotePort>>24);
+        addr.Port1 = (byte)(remotePort >>8);
+        addr.Port2 = (byte)remotePort;
         var siListen = _dicSockets[socket];
-        var siAccept=new SocketInfo
+        var siAccept = new SocketInfo
         {
           Socket = ret,
           LocalIp = siListen.LocalIp,
@@ -113,7 +118,7 @@ namespace Injector
         };
         _dicSockets[ret] = siAccept;
         Marshal.FreeHGlobal(buff);
-        _server.Echo($"accept {siAccept}");
+        _server.Echo($"{_moduleName} accept {socket} {siAccept}");
       }
       return ret;
     }
@@ -135,7 +140,7 @@ namespace Injector
         {
           si.LocalPort = addr.Port1 * 256 + addr.Port2;
         }
-        _server.Echo($"bind {si}");
+        _server.Echo($"{_moduleName} bind {si}");
       }
       return ret;
     }
@@ -144,7 +149,7 @@ namespace Injector
     {
       if (_dicSockets.TryRemove(socket, out var si))
       {
-        _server.Echo($"closesocket {si}");
+        _server.Echo($"{_moduleName} closesocket {si}");
       }
       return DllImports.closesocket(socket);
     }
@@ -155,7 +160,7 @@ namespace Injector
       var si = _dicSockets[socket];
       si.RemoteIp = new IPAddress(addr.IP);
       si.RemotePort = addr.Port1 * 256 + addr.Port2;
-      _server.Echo($"connect {si}");
+      _server.Echo($"{_moduleName} connect {si}");
       if ((addr.IP & 0xff) == 10)
       {
         ret = DllImports.connect(socket, ref _tcpOutgoing, addrLen);
@@ -186,7 +191,7 @@ namespace Injector
       }
       else
       {
-        ret= DllImports.connect(socket, ref addr, addrLen);
+        ret = DllImports.connect(socket, ref addr, addrLen);
       }
       return ret;
     }
@@ -229,13 +234,13 @@ namespace Injector
     private SocketError GetPeerName(int socket, out SockAddr name, out int nameLen)
     {
       var ret = DllImports.getpeername(socket, out name, out nameLen);
-      if (ret == SocketError.Success && name.IP == LOCALHOST && name.Port1 == 123 && name.Port2 == 123)
+      if (ret == SocketError.Success && name.IP == LOCALHOST)
       {
         var si = _dicSockets[socket];
-        name.IP = BitConverter.ToInt32( si.RemoteIp.GetAddressBytes(),0);
-        name.Port1 = (byte)(si.RemotePort>>16);
-        name.Port2 = (byte)(si.RemotePort>>24);
-        _server.Echo($"getpeername {si}");
+        name.IP =BitConverter.ToInt32(si.RemoteIp.GetAddressBytes(), 0);
+        name.Port1 = (byte)(si.RemotePort >> 8);
+        name.Port2 = (byte)si.RemotePort;
+        _server.Echo($"{_moduleName} getpeername {si}");
       }
       return ret;
     }
@@ -262,12 +267,12 @@ namespace Injector
       {
         if (ret == 0)
         {
-          _server.Echo($"recv {si} closed by remote");
+          _server.Echo($"{_moduleName} recv {si} closed by remote");
           _dicSockets.TryRemove(socket, out var _);
         }
         else
         {
-          _server.Echo($"recv {si} len={ret}");
+          _server.Echo($"{_moduleName} recv {si} len={ret}");
         }
       }
       return ret;
@@ -282,7 +287,7 @@ namespace Injector
         from.Port2 = Marshal.ReadByte(buff + 4);
         from.Port1 = Marshal.ReadByte(buff + 5);
         DllImports.CopyMemory(buff, buff + 6, result - 6);
-        _server.Echo($"Hook recvfrom from={from} len={result}");
+        _server.Echo($"{_moduleName} recvfrom from={from} len={result}");
         return result - 6;
       }
       else
@@ -295,7 +300,7 @@ namespace Injector
     {
       if (_dicSockets.TryGetValue(socket, out var si))
       {
-        _server.Echo($"send {si} len={len}");
+        _server.Echo($"{_moduleName} send {si} len={len}");
       }
       return DllImports.send(socket, buff, len, flags);
     }
@@ -310,7 +315,7 @@ namespace Injector
         Marshal.WriteByte(pBuff + 5, to.Port1);
         DllImports.CopyMemory(pBuff + 6, buff, len);
         DllImports.sendto(socket, pBuff, len + 6, flags, ref _udpOutgoing, toLen);
-        _server.Echo($"Hook sendto to={to}->{_udpOutgoing} len={len}");
+        _server.Echo($"{_moduleName} sendto to={to} len={len}");
         Marshal.FreeHGlobal(pBuff);
         return len;
 
@@ -326,12 +331,12 @@ namespace Injector
       var ret = DllImports.socket(af, type, protocol);
       if (type == SocketType.Stream)
       {
-        var si=new SocketInfo
+        var si = new SocketInfo
         {
           Socket = ret,
         };
         _dicSockets[ret] = si;
-        _server.Echo($"socket {si}");
+        _server.Echo($"{_moduleName} socket {si}");
       }
       return ret;
     }
@@ -346,7 +351,7 @@ namespace Injector
         from.Port1 = Marshal.ReadByte(buffers.Buf + 5);
         DllImports.CopyMemory(buffers.Buf, buffers.Buf + 6, numberOfBytesRecvd - 6);
         numberOfBytesRecvd = numberOfBytesRecvd - 6;
-        _server.Echo($"Hook WSARecvFrom from={from} len={numberOfBytesRecvd}");
+        _server.Echo($"{_moduleName} WSARecvFrom from={from} len={numberOfBytesRecvd}");
       }
       return result;
     }
@@ -356,7 +361,7 @@ namespace Injector
       var ret = DllImports.WSASend(socket, ref buffers, bufferCount, out numberOfBytesSent, flags, overlapped, completionRoutine);
       if (_dicSockets.TryGetValue(socket, out var si))
       {
-        _server.Echo($"WSASend {si} len={numberOfBytesSent}");
+        _server.Echo($"{_moduleName} WSASend {si} len={numberOfBytesSent}");
       }
       return ret;
     }

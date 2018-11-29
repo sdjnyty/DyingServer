@@ -27,7 +27,7 @@ namespace DyingClient
     private UdpClient _udpIncoming = new UdpClient(122 * 256 + 122);
     private TcpListener _tcpOutgoing = new TcpListener(IPAddress.Loopback, 123 * 256 + 123);
     //Tuple<RemoteIp,RemotePort,LocalPort>
-    private Dictionary<Tuple< int,int,int>, TcpClient> _tcpIncoming = new Dictionary<Tuple< int,int,int>, TcpClient>();
+    private Dictionary<Tuple<int, int, int>, TcpClient> _tcpIncoming = new Dictionary<Tuple<int, int, int>, TcpClient>();
     private int _vip;
 
     public Form1()
@@ -67,7 +67,7 @@ namespace DyingClient
       _hp.On<int>(nameof(OnLogin), OnLogin);
       _hp.On<int, int, int, byte[]>(nameof(OnReceiveFrom), OnReceiveFrom);
       _hp.On<int, int, int>(nameof(OnTcpConnect), OnTcpConnect);
-      _hp.On<int,int,int, byte[]>(nameof(OnTcpSend), OnTcpSend);
+      _hp.On<int, int, int, byte[]>(nameof(OnTcpSend), OnTcpSend);
       await _hc.Start();
       _userId = Guid.NewGuid().ToString();
       await _hp.Invoke("Login", _userId);
@@ -75,39 +75,41 @@ namespace DyingClient
       while (true)
       {
         var tcpClient = await _tcpOutgoing.AcceptTcpClientAsync();
-        var _=TcpTask(tcpClient);
+        var _ = Task.Run(async () => await TcpTask(tcpClient));
       }
     }
 
     private async Task TcpTask(TcpClient tcp)
     {
-      await Task.Run(async () =>
+      var localPort = ((IPEndPoint)tcp.Client.RemoteEndPoint).Port;
+      var stream = tcp.GetStream();
+      var buffer = new byte[1024];
+      stream.Read(buffer, 0, 8);
+      var remoteIp = BitConverter.ToInt32(buffer, 0);
+      var remotePort = BitConverter.ToInt32(buffer, 4);
+      try
       {
-        var localPort = ((IPEndPoint)tcp.Client.RemoteEndPoint).Port;
-        var stream = tcp.GetStream();
-        var buffer = new byte[1024];
-        try
+        _tcpIncoming.Add(Tuple.Create(remoteIp, remotePort, localPort), tcp);
+        await _hp.Invoke("TcpConnect", remoteIp, remotePort, localPort);
+        AppendLine($"TcpConnect to={new IPAddress(remoteIp)}:{remotePort} from={localPort}");
+        while (true)
         {
-          stream.Read(buffer, 0, 8);
-          var remoteIp = BitConverter.ToInt32(buffer, 0);
-          var remotePort = BitConverter.ToInt32(buffer, 4);
-          _tcpIncoming.Add(Tuple.Create(remoteIp, remotePort, localPort), tcp);
-          await _hp.Invoke("TcpConnect", remoteIp, remotePort, localPort);
-          AppendLine($"TcpConnect to={new IPAddress(remoteIp)}:{remotePort} from={localPort}");
-          while (stream.DataAvailable)
-          {
-            var count = stream.Read(buffer, 0, 1024);
-            var data = new byte[count];
-            Buffer.BlockCopy(buffer, 0, data, 0, count);
-            await _hp.Invoke("TcpSend", localPort, remoteIp, remotePort, data);
-            AppendLine($"TcpSend to={new IPAddress(remoteIp)}:{remotePort} from={localPort} data={BitConverter.ToString(data)}");
-          }
+          var count = stream.Read(buffer, 0, 1024);
+          if (count == 0) break;
+          var data = new byte[count];
+          Buffer.BlockCopy(buffer, 0, data, 0, count);
+          await _hp.Invoke("TcpSend", localPort, remoteIp, remotePort, data);
+          AppendLine($"TcpSend to={new IPAddress(remoteIp)}:{remotePort} from={localPort} data={BitConverter.ToString(data)}");
         }
-        catch(IOException)
-        {
-
-        }
-      });
+      }
+      catch (IOException)
+      {
+      }
+      finally
+      {
+        _tcpIncoming.Remove(Tuple.Create(remoteIp, remotePort, localPort));
+        AppendLine($"TcpClient closed local=:{localPort} remote={new IPAddress(remoteIp)}:{remotePort}");
+      }
     }
 
     private void btnDisconnect_Click(object sender, EventArgs e)
@@ -137,7 +139,7 @@ namespace DyingClient
         bw.Write((ushort)fromPort);
         bw.Write(data);
         var data1 = ms.ToArray();
-        AppendLine($"OnReceiveFrom from={new IPAddress( fromVip)}:{fromPort} to={toPort} data={BitConverter.ToString(data)}");
+        AppendLine($"OnReceiveFrom from={new IPAddress(fromVip)}:{fromPort} to={toPort} data={BitConverter.ToString(data)}");
         await _udpIncoming.SendAsync(data1, data1.Length, new IPEndPoint(IPAddress.Loopback, toPort));
       }
     }
@@ -153,22 +155,36 @@ namespace DyingClient
       var buffer = new byte[1024];
       await Task.Run(async () =>
       {
-        while (stream.DataAvailable)
+        try
         {
-          var count = stream.Read(buffer, 0, 1024);
-          var data = new byte[count];
-          Buffer.BlockCopy(buffer, 0, data, 0, count);
-          await _hp.Invoke("TcpSend", localPort, remoteIp,remotePort, data);
-          AppendLine($"TcpSend from=:{localPort} to={new IPAddress(remoteIp)}:{remotePort}");
+          while (true)
+          {
+            var count = stream.Read(buffer, 0, 1024);
+            if (count == 0) break;
+            var data = new byte[count];
+            Buffer.BlockCopy(buffer, 0, data, 0, count);
+            await _hp.Invoke("TcpSend", localPort, remoteIp, remotePort, data);
+            AppendLine($"TcpSend from=:{localPort} to={new IPAddress(remoteIp)}:{remotePort}");
+          }
+        }
+        catch (IOException)
+        {
+        }
+        finally
+        {
+          _tcpIncoming.Remove(Tuple.Create(remoteIp, remotePort, localPort));
+          AppendLine($"TcpClient closed local=:{localPort} remote={new IPAddress(remoteIp)}:{remotePort}");
         }
       });
     }
 
-    private void OnTcpSend(int remoteIp,int remotePort,int localPort, byte[] data)
+    private void OnTcpSend(int remoteIp, int remotePort, int localPort, byte[] data)
     {
-      var tcpIncoming = _tcpIncoming[Tuple.Create(remoteIp, remotePort, localPort)];
-      AppendLine($"OnTcpSend from={new IPAddress(remoteIp)}:{remotePort} to={localPort} data={BitConverter.ToString( data)}");
-      tcpIncoming.GetStream().Write(data, 0, data.Length);
+      if (_tcpIncoming.TryGetValue(Tuple.Create(remoteIp, remotePort, localPort), out var tcpIncoming))
+      {
+        AppendLine($"OnTcpSend from={new IPAddress(remoteIp)}:{remotePort} to={localPort} data={BitConverter.ToString(data)}");
+        tcpIncoming.GetStream().Write(data, 0, data.Length);
+      }
     }
 
     private void btnRunHost_Click(object sender, EventArgs e)
@@ -177,7 +193,7 @@ namespace DyingClient
       RemoteHooking.IpcCreateServer<Injector.ServerInterface>(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
       var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
       RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), "HOST_IP_LAUNCH \"hostName\"",
-              0, dllPath, dllPath, out var pid, channel, dllPath,_vip,_userId);
+              0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
     }
 
     private void btnRunClient_Click(object sender, EventArgs e)
@@ -186,7 +202,7 @@ namespace DyingClient
       RemoteHooking.IpcCreateServer<Injector.ServerInterface>(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
       var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
       RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), "CLIENT_IP_LAUNCH \"clientName\" " + txt.Text,
-              0, dllPath, dllPath, out var pid, channel, dllPath,_vip,_userId);
+              0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
     }
   }
 }
