@@ -53,6 +53,9 @@ currentDirectory, IntPtr startupInfo, out ProcessInformation processInformation)
     public delegate int Socket(AddressFamily af, SocketType type, ProtocolType protocol);
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    public delegate SocketError WSARecv(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesRecvd, ref int flags, IntPtr pOverlapped, IntPtr pCompletionRoutine);
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate SocketError WSARecvFrom(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesRecvd, ref int flags, out SockAddr from, out int fromLen, IntPtr pOverlapped, IntPtr pCompletionRoutine);
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]

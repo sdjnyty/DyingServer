@@ -95,11 +95,11 @@ namespace DyingClient
         while (true)
         {
           var count = stream.Read(buffer, 0, 1024);
-          if (count == 0) break;
           var data = new byte[count];
           Buffer.BlockCopy(buffer, 0, data, 0, count);
           await _hp.Invoke("TcpSend", localPort, remoteIp, remotePort, data);
           AppendLine($"TcpSend to={new IPAddress(remoteIp)}:{remotePort} from={localPort} data={BitConverter.ToString(data)}");
+          if (count == 0) break;
         }
       }
       catch (IOException)
@@ -149,6 +149,7 @@ namespace DyingClient
       var tcpIncoming = new TcpClient(AddressFamily.InterNetwork);
       await tcpIncoming.ConnectAsync(IPAddress.Loopback, localPort);
       _tcpIncoming[Tuple.Create(remoteIp, remotePort, localPort)] = tcpIncoming;
+      AppendLine($"OnTcpConnect remote={new IPAddress(remoteIp)}:{remotePort} local=:{localPort}");
       var stream = tcpIncoming.GetStream();
       stream.Write(BitConverter.GetBytes(remoteIp), 0, 4);
       stream.Write(BitConverter.GetBytes(remotePort), 0, 4);
@@ -160,11 +161,11 @@ namespace DyingClient
           while (true)
           {
             var count = stream.Read(buffer, 0, 1024);
-            if (count == 0) break;
             var data = new byte[count];
             Buffer.BlockCopy(buffer, 0, data, 0, count);
             await _hp.Invoke("TcpSend", localPort, remoteIp, remotePort, data);
             AppendLine($"TcpSend from=:{localPort} to={new IPAddress(remoteIp)}:{remotePort}");
+            if (count == 0) break;
           }
         }
         catch (IOException)
@@ -183,7 +184,14 @@ namespace DyingClient
       if (_tcpIncoming.TryGetValue(Tuple.Create(remoteIp, remotePort, localPort), out var tcpIncoming))
       {
         AppendLine($"OnTcpSend from={new IPAddress(remoteIp)}:{remotePort} to={localPort} data={BitConverter.ToString(data)}");
-        tcpIncoming.GetStream().Write(data, 0, data.Length);
+        if (data.Length == 0)
+        {
+          tcpIncoming.Close();
+        }
+        else
+        {
+          tcpIncoming.GetStream().Write(data, 0, data.Length);
+        }
       }
     }
 

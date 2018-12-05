@@ -59,6 +59,9 @@ namespace Injector
     public static extern SocketError WSAGetLastError();
 
     [DllImport("ws2_32")]
+    public static extern SocketError WSARecv(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesRecvd, ref int flags, IntPtr overlapped, IntPtr completionRoutine);
+
+    [DllImport("ws2_32")]
     public static extern SocketError WSARecvFrom(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesRecvd, ref int flags, out SockAddr from, out int fromLen, IntPtr overlapped, IntPtr completionRoutine);
 
     [DllImport("ws2_32")]

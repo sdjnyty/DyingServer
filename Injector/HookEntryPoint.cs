@@ -80,6 +80,8 @@ namespace Injector
       hSend.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hWSASend = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "WSASend"), new Delegates.WSASend(WSASend), this);
       hWSASend.ThreadACL.SetExclusiveACL(new[] { 0 });
+      var hWSARecv = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "WSARecv"), new Delegates.WSARecv(WSARecv), this);
+      hWSARecv.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hRecv = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "recv"), new Delegates.Recv(Recv), this);
       hRecv.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hSocket = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "socket"), new Delegates.Socket(Socket), this);
@@ -101,7 +103,7 @@ namespace Injector
         var count = 0;
         while (count < 8)
         {
-          count += DllImports.recv(ret, buff, 8 - count, 0);
+          count += DllImports.recv(ret, buff+count, 8 - count, 0);
         }
         addr.IP = Marshal.ReadInt32(buff);
         var remotePort = Marshal.ReadInt32(buff + 4);
@@ -337,6 +339,24 @@ namespace Injector
         };
         _dicSockets[ret] = si;
         _server.Echo($"{_moduleName} socket {si}");
+      }
+      return ret;
+    }
+
+    private SocketError WSARecv(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesRecvd, ref int flags, IntPtr overlapped, IntPtr completionRoutine)
+    {
+      var ret = DllImports.WSARecv(socket, ref buffers, bufferCount, out numberOfBytesRecvd, ref flags,  overlapped, completionRoutine);
+      if (_dicSockets.TryGetValue(socket, out var si))
+      {
+        if (numberOfBytesRecvd == 0)
+        {
+          _server.Echo($"{_moduleName} WSARecv {si} closed by remote");
+          _dicSockets.TryRemove(socket, out var _);
+        }
+        else
+        {
+          _server.Echo($"{_moduleName} WSARecv {si} len={numberOfBytesRecvd}");
+        }
       }
       return ret;
     }
