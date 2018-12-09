@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web;
+using System.IO;
 
 namespace DyingServer
 {
@@ -37,5 +37,7 @@ namespace DyingServer
     public string UserId { get; set; }
     public string ConnectionId { get; set; }
     public int Vip { get; set; }
+    public int GameId { get; set; }
+    public FileStream UploadingStream { get; set; }
   }
 }

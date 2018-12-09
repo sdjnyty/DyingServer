@@ -4,19 +4,21 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Web;
 using Microsoft.AspNet.SignalR;
+using System.IO;
 
 namespace DyingServer.Hubs
 {
   public class PlayerHub : Hub<IPlayerClient>
   {
     public override Task OnConnected()
-    {
+    { 
       return base.OnConnected();
     }
 
     public override Task OnDisconnected(bool stopCalled)
     {
       var pi = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      pi.UploadingStream?.Close();
       IpPool.RecycleIp(pi.Vip);
       Clients.All.Receive($"{pi. UserId} left.");
       return base.OnDisconnected(stopCalled);
@@ -60,6 +62,29 @@ namespace DyingServer.Hubs
       var toPlayer = PlayerInfoPool.GetByVip(toIp);
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
       Clients.Client(toPlayer.ConnectionId).OnTcpSend(fromPlayer.Vip, fromPort, toPort, data);
+    }
+
+    public void BeginRec()
+    {
+      var gameId=(int)HttpContext.Current.Application["GameId"];
+      gameId++;
+      HttpContext.Current.Application["GameId"] = gameId;
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      fromPlayer.GameId = gameId;
+      var path=HttpContext.Current.Server.MapPath($@"~\app_data\{gameId}.mgz");
+      fromPlayer.UploadingStream = File.Create(path);
+    }
+
+    public async Task UploadRec(int pos,byte[] data)
+    {
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      await fromPlayer.UploadingStream.WriteAsync(data, 0, data.Length);
+    }
+
+    public void EndRec()
+    {
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      fromPlayer.UploadingStream?.Close();
     }
   }
 

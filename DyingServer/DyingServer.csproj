@@ -92,6 +92,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Scripts\jquery-3.3.1.intellisense.js" />
+    <Content Include="App_Data\.placeholder.txt" />
+    <Content Include="Global.asax" />
     <Content Include="Scripts\jquery-3.3.1.js" />
     <Content Include="Scripts\jquery-3.3.1.min.js" />
     <Content Include="Scripts\jquery-3.3.1.slim.js" />
@@ -101,6 +103,9 @@
     <Content Include="Web.config" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Global.asax.cs">
+      <DependentUpon>Global.asax</DependentUpon>
+    </Compile>
     <Compile Include="Hubs\PlayerHub.cs" />
     <Compile Include="IpPool.cs" />
     <Compile Include="PlayerInfoPool.cs" />
@@ -119,6 +124,7 @@
       <DependentUpon>Web.config</DependentUpon>
     </None>
   </ItemGroup>
+  <ItemGroup />
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
     <VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
