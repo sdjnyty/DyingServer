@@ -29,7 +29,7 @@ namespace DyingServer.Hubs
       Clients.All.Receive(message);
     }
 
-    public void Login(string userId)
+    public int Login(string userId)
     {
       var vip = IpPool.AllocateIp();
       var pi = new PlayerInfo
@@ -39,8 +39,8 @@ namespace DyingServer.Hubs
         ConnectionId = Context.ConnectionId,
       };
       PlayerInfoPool.Add(pi);
-      Clients.Caller.OnLogin(vip);
       Clients.All.Receive($"{userId} joined.");
+      return vip;
     }
 
     public void SendTo(int toIp,int toPort,int fromPort,byte[] data)
@@ -90,7 +90,6 @@ namespace DyingServer.Hubs
 
   public interface IPlayerClient
   {
-    void OnLogin(int vip);
     void Receive(string message);
     void OnReceiveFrom(int fromIp,int fromPort, int toPort, byte[] data);
     void OnTcpConnect(int fromIp, int fromPort, int toPort);

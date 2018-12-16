@@ -50,6 +50,8 @@ namespace Injector
     public void Run(RemoteHooking.IContext context, string channel, string dllPath, int vip, string userId)
     {
       _moduleName = Process.GetCurrentProcess().ProcessName;
+      DllImports.LoadLibraryA("wsock32");
+      DllImports.LoadLibraryA("ws2_32");
       var hSendTo = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "sendto"), new Delegates.SendTo(SendTo), this);
       hSendTo.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hRecvFrom = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "recvfrom"), new Delegates.RecvFrom(RecvFrom), this);
@@ -64,7 +66,6 @@ namespace Injector
       hConnect.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hLoadLibraryA = LocalHook.Create(LocalHook.GetProcAddress("kernel32", "LoadLibraryA"), new Delegates.LoadLibraryA(LoadLibraryA), this);
       hLoadLibraryA.ThreadACL.SetExclusiveACL(new[] { 0 });
-      DllImports.LoadLibraryA("wsock32");
       var hGetPeerName = LocalHook.Create(LocalHook.GetProcAddress("wsock32", "getpeername"), new Delegates.GetPeerName(GetPeerName), this);
       hGetPeerName.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hGetSockName = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "getsockname"), new Delegates.GetSockName(GetSockName), this);
@@ -103,11 +104,25 @@ namespace Injector
         var count = 0;
         while (count < 8)
         {
-          count += DllImports.recv(ret, buff+count, 8 - count, 0);
+          var ret1 = DllImports.recv(ret, buff + count, 8 - count, 0);
+          if (ret1 == -1 && DllImports.WSAGetLastError() == SocketError.WouldBlock)
+          {
+            var read = new fd_set
+            {
+              Count = 1,
+              Socket = ret,
+            };
+            var pRead = Marshal.AllocHGlobal(8);
+            Marshal.StructureToPtr(read, pRead, true);
+            DllImports.select(0, pRead, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            Marshal.FreeHGlobal(pRead);
+            ret1 = DllImports.recv(ret, buff + count, 8 - count, 0);
+          }
+          count += ret1;
         }
         addr.IP = Marshal.ReadInt32(buff);
         var remotePort = Marshal.ReadInt32(buff + 4);
-        addr.Port1 = (byte)(remotePort >>8);
+        addr.Port1 = (byte)(remotePort >> 8);
         addr.Port2 = (byte)remotePort;
         var siListen = _dicSockets[socket];
         var siAccept = new SocketInfo
@@ -181,8 +196,10 @@ namespace Injector
             Count = 1,
             Socket = socket,
           };
-          var except = write;
-          DllImports.select(0, IntPtr.Zero, ref write, ref except, IntPtr.Zero);
+          var pWrite = Marshal.AllocHGlobal(8);
+          Marshal.StructureToPtr(write, pWrite, true);
+          DllImports.select(0, IntPtr.Zero, pWrite, IntPtr.Zero, IntPtr.Zero);
+          Marshal.FreeHGlobal(pWrite);
           var pBuff = Marshal.AllocHGlobal(8);
           Marshal.WriteInt32(pBuff, addr.IP);
           Marshal.WriteInt32(pBuff + 4, addr.Port1 * 256 + addr.Port2);
@@ -239,7 +256,7 @@ namespace Injector
       if (ret == SocketError.Success && name.IP == LOCALHOST)
       {
         var si = _dicSockets[socket];
-        name.IP =BitConverter.ToInt32(si.RemoteIp.GetAddressBytes(), 0);
+        name.IP = BitConverter.ToInt32(si.RemoteIp.GetAddressBytes(), 0);
         name.Port1 = (byte)(si.RemotePort >> 8);
         name.Port2 = (byte)si.RemotePort;
         _server.Echo($"{_moduleName} getpeername {si}");
@@ -345,7 +362,7 @@ namespace Injector
 
     private SocketError WSARecv(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesRecvd, ref int flags, IntPtr overlapped, IntPtr completionRoutine)
     {
-      var ret = DllImports.WSARecv(socket, ref buffers, bufferCount, out numberOfBytesRecvd, ref flags,  overlapped, completionRoutine);
+      var ret = DllImports.WSARecv(socket, ref buffers, bufferCount, out numberOfBytesRecvd, ref flags, overlapped, completionRoutine);
       if (_dicSockets.TryGetValue(socket, out var si))
       {
         if (numberOfBytesRecvd == 0)

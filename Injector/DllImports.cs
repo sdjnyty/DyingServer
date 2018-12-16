@@ -44,7 +44,7 @@ namespace Injector
     public static extern int recvfrom(int socket, IntPtr buff, int len, int flags, ref SockAddr from, ref int fromLen);
 
     [DllImport("ws2_32")]
-    public static extern int select(int nfds, IntPtr read, ref fd_set write, ref fd_set except, IntPtr timeout);
+    public static extern int select(int nfds, IntPtr read, IntPtr write, IntPtr except, IntPtr timeout);
 
     [DllImport("ws2_32")]
     public static extern int send(int socket, IntPtr buff, int len, int flags);
