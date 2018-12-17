@@ -16,22 +16,23 @@ using System.Net;
 
 namespace DyingClient
 {
-  public partial class Form1 : Form
+  public partial class FrmLobby : Form
   {
     private const string URL = "http://47.93.96.30:81/";
     private string _userId;
+    private string _roomId;
     private HubConnection _hc;
-    private IHubProxy _hp;
+    internal IHubProxy _hp;
     private string exePath = (string)Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Microsoft Games\Age of Empires II: The Conquerors Expansion\1.0").GetValue("EXE Path");
-    private UdpClient _udpOutgoing = new UdpClient(123 * 256 + 123);
-    private UdpClient _udpIncoming = new UdpClient(122 * 256 + 122);
-    private TcpListener _tcpOutgoing = new TcpListener(IPAddress.Loopback, 123 * 256 + 123);
+    private UdpClient _udpOutgoing ;
+    private UdpClient _udpIncoming ;
+    private TcpListener _tcpOutgoing ;
     //Tuple<RemoteIp,RemotePort,LocalPort>
     private Dictionary<Tuple<int, int, int>, TcpClient> _tcpIncoming = new Dictionary<Tuple<int, int, int>, TcpClient>();
     private int _vip;
     private BlockingCollection<Tuple<int, int, int, byte[]>> _qUdpOut = new BlockingCollection<Tuple<int, int, int, byte[]>>();
 
-    public Form1()
+    public FrmLobby()
     {
       InitializeComponent();
       _hc = new HubConnection(URL);
@@ -40,26 +41,45 @@ namespace DyingClient
 
     private void Form1_Load(object sender, EventArgs e)
     {
-      var _ = ProduceUdpOutQ();
-      _ = ConsumeUdpOutQ();
+      btnLogout.Enabled = false;
+      btnCreateRoom.Enabled = false;
     }
 
-    private async void btnConnect_Click(object sender, EventArgs e)
+    private async void btnLogin_Click(object sender, EventArgs e)
     {
-      _hp = _hc.CreateHubProxy("PlayerHub");
-      _hp.On<int, int, int, byte[]>(nameof(OnReceiveFrom), OnReceiveFrom);
-      _hp.On<int, int, int>(nameof(OnTcpConnect), OnTcpConnect);
-      _hp.On<int, int, int, byte[]>(nameof(OnTcpSend), OnTcpSend);
-      await _hc.Start();
-      _userId = Guid.NewGuid().ToString();
-      _vip = await _hp.Invoke<int>("Login", _userId);
-      AppendLine(new IPAddress(_vip).ToString());
-      _tcpOutgoing.Start();
-      while (true)
+      if (string.IsNullOrWhiteSpace(txtUserName.Text))
       {
-        var tcpOut = await _tcpOutgoing.AcceptTcpClientAsync();
-        var _ = TcpOut(tcpOut);
+        MessageBox.Show("用户名不能为空");
       }
+      else
+      {
+        btnLogin.Enabled = false;
+        _hp = _hc.CreateHubProxy("PlayerHub");
+        _hp.On<int, int, int, byte[]>(nameof(OnReceiveFrom), OnReceiveFrom);
+        _hp.On<int, int, int>(nameof(OnTcpConnect), OnTcpConnect);
+        _hp.On<int, int, int, byte[]>(nameof(OnTcpSend), OnTcpSend);
+        _hp.On<string>(nameof(UserLogin), UserLogin);
+        _hp.On<string>(nameof(UserLogout), UserLogout);
+        _hp.On<string>(nameof(CreateRoom), CreateRoom);
+        await _hc.Start();
+        _hc.Closed += _hc_Closed;
+        _userId = txtUserName.Text;
+        var lr = await _hp.Invoke<LoginResult>("Login", _userId);
+        _vip = lr.Vip;
+        AppendLine($"登录成功，用户名 {_userId} ;虚拟IP {new IPAddress(_vip)}");
+        lbxOnlineUsers.Items.AddRange(lr.OnlineUsers.ToArray());
+        btnLogout.Enabled = true;
+        btnCreateRoom.Enabled = true;
+      }
+    }
+
+    private void _hc_Closed()
+    {
+      _hc.Closed -= _hc_Closed;
+      AppendLine("已离线");
+      lbxOnlineUsers.Items.Clear();
+      btnLogin.Enabled = true;
+      btnLogout.Enabled = false;
     }
 
     private async Task TcpOut(TcpClient tcp)
@@ -93,13 +113,6 @@ namespace DyingClient
         _tcpIncoming.Remove(Tuple.Create(remoteIp, remotePort, localPort));
         AppendLine($"TcpClient closed local=:{localPort} remote={new IPAddress(remoteIp)}:{remotePort}");
       }
-    }
-
-    private void btnDisconnect_Click(object sender, EventArgs e)
-    {
-      _hc.Stop();
-      _udpOutgoing.Close();
-      _udpIncoming.Close();
     }
 
     private void AppendLine(string line)
@@ -188,7 +201,7 @@ namespace DyingClient
       string channel = null;
       RemoteHooking.IpcCreateServer<Injector.ServerInterface>(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
       var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
-      RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), "CLIENT_IP_LAUNCH \"clientName\" " + txt.Text,
+      RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), "CLIENT_IP_LAUNCH \"clientName\" " + txtUserName.Text,
               0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
     }
 
@@ -263,5 +276,68 @@ namespace DyingClient
         await _hp.Invoke("SendTo", item.Item1, item.Item2, item.Item3, item.Item4);
       }
     }
+
+    private void UserLogin(string userId)
+    {
+      lbxOnlineUsers.Invoke((Action)(() =>
+     {
+       lbxOnlineUsers.Items.Add(userId);
+     }));
+    }
+
+    private void btnLogout_Click(object sender, EventArgs e)
+    {
+      AppendLine("正在登出...");
+      btnLogout.Enabled = false;
+      _hc.Stop();
+    }
+
+    private async void btnCreateRoom_Click(object sender, EventArgs e)
+    {
+      btnCreateRoom.Enabled = false;
+      _roomId = await _hp.Invoke<string>("CreateRoom");
+      AppendLine($"创建了房间“{_roomId}”");
+      lbxRooms.Items.Add(_roomId);
+      AppendLine($"已进入房间“{_roomId}”");
+      var frmRoom = new FrmRoom();
+      frmRoom.Text = _roomId;
+      frmRoom.lblHostName.Text = "房间主机：" + _userId;
+      frmRoom.ShowDialog();
+    }
+
+    private void CreateRoom(string roomId)
+    {
+      lbxRooms.Invoke((Action)(() =>
+     {
+       lbxRooms.Items.Add(roomId);
+      }));
+
+    }
+
+    private async Task SetupSockets()
+    {
+      _udpOutgoing = new UdpClient(123 * 256 + 123);
+      _udpIncoming = new UdpClient(122 * 256 + 122);
+      var _ = ProduceUdpOutQ();
+      _ = ConsumeUdpOutQ();
+      _tcpOutgoing = new TcpListener(IPAddress.Loopback, 123 * 256 + 123);
+      _tcpOutgoing.Start();
+      while (true)
+      {
+        var tcpOut = await _tcpOutgoing.AcceptTcpClientAsync();
+        var _1 = TcpOut(tcpOut);
+      }
+    }
+
+    private void UserLogout(string userId)
+    {
+      lbxOnlineUsers.Invoke((Action) (() => { lbxOnlineUsers.Items.Remove(userId); }));
+    }
+  }
+
+  public class LoginResult
+  {
+    public int Vip { get; set; }
+    public List<string> OnlineUsers { get; set; }
   }
 }

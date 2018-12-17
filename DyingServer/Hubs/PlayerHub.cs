@@ -11,7 +11,7 @@ namespace DyingServer.Hubs
   public class PlayerHub : Hub<IPlayerClient>
   {
     public override Task OnConnected()
-    { 
+    {
       return base.OnConnected();
     }
 
@@ -20,7 +20,8 @@ namespace DyingServer.Hubs
       var pi = PlayerInfoPool.GetByCid(Context.ConnectionId);
       pi.UploadingStream?.Close();
       IpPool.RecycleIp(pi.Vip);
-      Clients.All.Receive($"{pi. UserId} left.");
+      Clients.Others.UserLogout(pi.UserId);
+      PlayerInfoPool.Remove(pi);
       return base.OnDisconnected(stopCalled);
     }
 
@@ -29,7 +30,7 @@ namespace DyingServer.Hubs
       Clients.All.Receive(message);
     }
 
-    public int Login(string userId)
+    public LoginResult Login(string userId)
     {
       var vip = IpPool.AllocateIp();
       var pi = new PlayerInfo
@@ -39,25 +40,29 @@ namespace DyingServer.Hubs
         ConnectionId = Context.ConnectionId,
       };
       PlayerInfoPool.Add(pi);
-      Clients.All.Receive($"{userId} joined.");
-      return vip;
+      Clients.Others.UserLogin(userId);
+      return new LoginResult
+      {
+        Vip = vip,
+        OnlineUsers = PlayerInfoPool.Enumerate().Select(p => p.UserId).ToList(),
+      };
     }
 
-    public void SendTo(int toIp,int toPort,int fromPort,byte[] data)
+    public void SendTo(int toIp, int toPort, int fromPort, byte[] data)
     {
       var toPlayer = PlayerInfoPool.GetByVip(toIp);
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
-      Clients.Client(toPlayer.ConnectionId).OnReceiveFrom(fromPlayer.Vip,fromPort,toPort, data);
+      Clients.Client(toPlayer.ConnectionId).OnReceiveFrom(fromPlayer.Vip, fromPort, toPort, data);
     }
-    
-    public void TcpConnect(int toIp,int toPort,int fromPort)
+
+    public void TcpConnect(int toIp, int toPort, int fromPort)
     {
       var toPlayer = PlayerInfoPool.GetByVip(toIp);
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
       Clients.Client(toPlayer.ConnectionId).OnTcpConnect(fromPlayer.Vip, fromPort, toPort);
     }
 
-    public void TcpSend(int fromPort,int toIp,int toPort,byte[] data)
+    public void TcpSend(int fromPort, int toIp, int toPort, byte[] data)
     {
       var toPlayer = PlayerInfoPool.GetByVip(toIp);
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
@@ -66,16 +71,16 @@ namespace DyingServer.Hubs
 
     public void BeginRec()
     {
-      var gameId=(int)HttpContext.Current.Application["GameId"];
+      var gameId = (int)HttpContext.Current.Application["GameId"];
       gameId++;
       HttpContext.Current.Application["GameId"] = gameId;
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
       fromPlayer.GameId = gameId;
-      var path=HttpContext.Current.Server.MapPath($@"~\app_data\{gameId}.mgz");
+      var path = HttpContext.Current.Server.MapPath($@"~\app_data\{gameId}.mgz");
       fromPlayer.UploadingStream = File.Create(path);
     }
 
-    public async Task UploadRec(int pos,byte[] data)
+    public async Task UploadRec(int pos, byte[] data)
     {
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
       await fromPlayer.UploadingStream.WriteAsync(data, 0, data.Length);
@@ -86,13 +91,40 @@ namespace DyingServer.Hubs
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
       fromPlayer.UploadingStream?.Close();
     }
+
+    public async Task< string> CreateRoom()
+    {
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      var roomId = fromPlayer.UserId + " 的房间";
+      var ri = new RoomInfo
+      {
+        HostId = fromPlayer.UserId,
+        RoomId = roomId,
+      };
+      RoomPool.Add(ri);
+      await Groups.Add(fromPlayer.ConnectionId, roomId);
+      Clients.Others.CreateRoom(roomId);
+      return roomId;
+    }
   }
 
   public interface IPlayerClient
   {
     void Receive(string message);
-    void OnReceiveFrom(int fromIp,int fromPort, int toPort, byte[] data);
+    void OnReceiveFrom(int fromIp, int fromPort, int toPort, byte[] data);
     void OnTcpConnect(int fromIp, int fromPort, int toPort);
-    void OnTcpSend(int fromIp,int fromPort, int toPort, byte[] data);
+    void OnTcpSend(int fromIp, int fromPort, int toPort, byte[] data);
+    void UserLogin(string userId);
+    void UserLogout(string userId);
+    void CreateRoom(string roomId);
+    void JoinRoom(string roomId);
+    void DestroyRoom();
+    void LeaveRoom();
+  }
+
+  public class LoginResult
+  {
+    public int Vip { get; set; }
+    public List<string> OnlineUsers { get; set; }
   }
 }

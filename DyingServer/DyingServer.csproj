@@ -110,6 +110,7 @@
     <Compile Include="IpPool.cs" />
     <Compile Include="PlayerInfoPool.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RoomPool.cs" />
     <Compile Include="Startup.cs" />
   </ItemGroup>
   <ItemGroup>
