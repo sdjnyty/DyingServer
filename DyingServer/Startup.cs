@@ -11,7 +11,11 @@ namespace DyingServer
   {
     public void Configuration(IAppBuilder app)
     {
-      app.MapSignalR();
+      var config=new Microsoft.AspNet.SignalR.HubConfiguration
+      {
+        EnableDetailedErrors = true,
+      };
+      app.MapSignalR(config);
     }
   }
 }

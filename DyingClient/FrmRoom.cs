@@ -16,5 +16,10 @@ namespace DyingClient
     {
       InitializeComponent();
     }
+
+    private void btnLeaveRoom_Click(object sender, EventArgs e)
+    {
+
+    }
   }
 }

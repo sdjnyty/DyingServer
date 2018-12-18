@@ -18,6 +18,11 @@ namespace DyingServer
     {
       _idDic.Remove(ri.RoomId);
     }
+
+    public static RoomInfo GetById(string rid)
+    {
+      return _idDic[rid];
+    }
   }
 
   public class RoomInfo

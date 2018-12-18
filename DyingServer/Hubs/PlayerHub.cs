@@ -20,6 +20,19 @@ namespace DyingServer.Hubs
       var pi = PlayerInfoPool.GetByCid(Context.ConnectionId);
       pi.UploadingStream?.Close();
       IpPool.RecycleIp(pi.Vip);
+      if (pi.RoomId != null)
+      {
+        var ri = RoomPool.GetById(pi.RoomId);
+        if (ri.HostId == pi.UserId)
+        {
+          Clients.All.DestroyRoom(ri.RoomId);
+          RoomPool.Remove(ri);
+        }
+        else
+        {
+          Clients.Group(ri.RoomId).LeaveRoom(pi.UserId);
+        }
+      }
       Clients.Others.UserLogout(pi.UserId);
       PlayerInfoPool.Remove(pi);
       return base.OnDisconnected(stopCalled);
@@ -101,10 +114,42 @@ namespace DyingServer.Hubs
         HostId = fromPlayer.UserId,
         RoomId = roomId,
       };
+      ri.Players.Add(fromPlayer.UserId);
       RoomPool.Add(ri);
+      fromPlayer.RoomId = roomId;
       await Groups.Add(fromPlayer.ConnectionId, roomId);
       Clients.Others.CreateRoom(roomId);
       return roomId;
+    }
+
+    public void DestroyRoom()
+    {
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      Clients.Others.DestroyRoom(fromPlayer.RoomId);
+      var ri = RoomPool.GetById(fromPlayer.RoomId);
+      RoomPool.Remove(ri);
+      fromPlayer.RoomId = null;
+    }
+
+    public List<string> JoinRoom(string roomId)
+    {
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      fromPlayer.RoomId = roomId;
+      var ri = RoomPool.GetById(roomId);
+      ri.Players.Add(fromPlayer.UserId);
+      Clients.Group(roomId).JoinRoom(roomId, fromPlayer.UserId);
+      Groups.Add(fromPlayer.ConnectionId, roomId);
+      return ri.Players;
+    }
+
+    public void LeaveRoom()
+    {
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      var ri = RoomPool.GetById(fromPlayer.RoomId);
+      ri.Players.Remove(fromPlayer.UserId);
+      Groups.Remove(fromPlayer.ConnectionId, ri.RoomId);
+      Clients.Group(ri.RoomId).LeaveRoom(fromPlayer.UserId);
+      fromPlayer.RoomId = null;
     }
   }
 
@@ -117,9 +162,9 @@ namespace DyingServer.Hubs
     void UserLogin(string userId);
     void UserLogout(string userId);
     void CreateRoom(string roomId);
-    void JoinRoom(string roomId);
-    void DestroyRoom();
-    void LeaveRoom();
+    void JoinRoom(string roomId,string userId);
+    void DestroyRoom(string roomId);
+    void LeaveRoom(string userId);
   }
 
   public class LoginResult

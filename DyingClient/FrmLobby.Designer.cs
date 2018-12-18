@@ -39,13 +39,19 @@
       this.lbxRooms = new System.Windows.Forms.ListBox();
       this.lblDebug = new System.Windows.Forms.Label();
       this.btnCreateRoom = new System.Windows.Forms.Button();
+      this.btnJoinRoom = new System.Windows.Forms.Button();
+      this.btnLeaveRoom = new System.Windows.Forms.Button();
+      this.btnRun = new System.Windows.Forms.Button();
+      this.btnCancelRoom = new System.Windows.Forms.Button();
+      this.lbxRoomUsers = new System.Windows.Forms.ListBox();
+      this.lblRoomUsers = new System.Windows.Forms.Label();
       this.SuspendLayout();
       // 
       // btnLogin
       // 
       this.btnLogin.Location = new System.Drawing.Point(298, 25);
       this.btnLogin.Name = "btnLogin";
-      this.btnLogin.Size = new System.Drawing.Size(75, 21);
+      this.btnLogin.Size = new System.Drawing.Size(76, 23);
       this.btnLogin.TabIndex = 0;
       this.btnLogin.Text = "登录";
       this.btnLogin.UseVisualStyleBackColor = true;
@@ -133,7 +139,7 @@
       // 
       // btnCreateRoom
       // 
-      this.btnCreateRoom.Location = new System.Drawing.Point(487, 25);
+      this.btnCreateRoom.Location = new System.Drawing.Point(310, 83);
       this.btnCreateRoom.Name = "btnCreateRoom";
       this.btnCreateRoom.Size = new System.Drawing.Size(75, 23);
       this.btnCreateRoom.TabIndex = 15;
@@ -141,11 +147,74 @@
       this.btnCreateRoom.UseVisualStyleBackColor = true;
       this.btnCreateRoom.Click += new System.EventHandler(this.btnCreateRoom_Click);
       // 
-      // Form1
+      // btnJoinRoom
+      // 
+      this.btnJoinRoom.Location = new System.Drawing.Point(310, 112);
+      this.btnJoinRoom.Name = "btnJoinRoom";
+      this.btnJoinRoom.Size = new System.Drawing.Size(75, 23);
+      this.btnJoinRoom.TabIndex = 16;
+      this.btnJoinRoom.Text = "加入房间";
+      this.btnJoinRoom.UseVisualStyleBackColor = true;
+      this.btnJoinRoom.Click += new System.EventHandler(this.btnJoinRoom_Click);
+      // 
+      // btnLeaveRoom
+      // 
+      this.btnLeaveRoom.Location = new System.Drawing.Point(310, 141);
+      this.btnLeaveRoom.Name = "btnLeaveRoom";
+      this.btnLeaveRoom.Size = new System.Drawing.Size(75, 23);
+      this.btnLeaveRoom.TabIndex = 17;
+      this.btnLeaveRoom.Text = "离开房间";
+      this.btnLeaveRoom.UseVisualStyleBackColor = true;
+      this.btnLeaveRoom.Click += new System.EventHandler(this.btnLeaveRoom_Click);
+      // 
+      // btnRun
+      // 
+      this.btnRun.Location = new System.Drawing.Point(537, 112);
+      this.btnRun.Name = "btnRun";
+      this.btnRun.Size = new System.Drawing.Size(116, 52);
+      this.btnRun.TabIndex = 18;
+      this.btnRun.Text = "开始游戏";
+      this.btnRun.UseVisualStyleBackColor = true;
+      // 
+      // btnCancelRoom
+      // 
+      this.btnCancelRoom.Location = new System.Drawing.Point(311, 171);
+      this.btnCancelRoom.Name = "btnCancelRoom";
+      this.btnCancelRoom.Size = new System.Drawing.Size(75, 23);
+      this.btnCancelRoom.TabIndex = 19;
+      this.btnCancelRoom.Text = "取消房间";
+      this.btnCancelRoom.UseVisualStyleBackColor = true;
+      this.btnCancelRoom.Click += new System.EventHandler(this.btnCancelRoom_Click);
+      // 
+      // lbxRoomUsers
+      // 
+      this.lbxRoomUsers.FormattingEnabled = true;
+      this.lbxRoomUsers.ItemHeight = 12;
+      this.lbxRoomUsers.Location = new System.Drawing.Point(395, 106);
+      this.lbxRoomUsers.Name = "lbxRoomUsers";
+      this.lbxRoomUsers.Size = new System.Drawing.Size(120, 88);
+      this.lbxRoomUsers.TabIndex = 20;
+      // 
+      // lblRoomUsers
+      // 
+      this.lblRoomUsers.AutoSize = true;
+      this.lblRoomUsers.Location = new System.Drawing.Point(395, 88);
+      this.lblRoomUsers.Name = "lblRoomUsers";
+      this.lblRoomUsers.Size = new System.Drawing.Size(101, 12);
+      this.lblRoomUsers.TabIndex = 21;
+      this.lblRoomUsers.Text = "房间内玩家列表：";
+      // 
+      // FrmLobby
       // 
       this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
       this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
       this.ClientSize = new System.Drawing.Size(800, 415);
+      this.Controls.Add(this.lblRoomUsers);
+      this.Controls.Add(this.lbxRoomUsers);
+      this.Controls.Add(this.btnCancelRoom);
+      this.Controls.Add(this.btnRun);
+      this.Controls.Add(this.btnLeaveRoom);
+      this.Controls.Add(this.btnJoinRoom);
       this.Controls.Add(this.btnCreateRoom);
       this.Controls.Add(this.lblDebug);
       this.Controls.Add(this.lbxRooms);
@@ -157,7 +226,7 @@
       this.Controls.Add(this.txtUserName);
       this.Controls.Add(this.rtb);
       this.Controls.Add(this.btnLogin);
-      this.Name = "Form1";
+      this.Name = "FrmLobby";
       this.Text = "呆鹰帝国对战平台 版本 黑暗时代3";
       this.ResumeLayout(false);
       this.PerformLayout();
@@ -177,6 +246,12 @@
     private System.Windows.Forms.ListBox lbxRooms;
     private System.Windows.Forms.Label lblDebug;
     private System.Windows.Forms.Button btnCreateRoom;
+    private System.Windows.Forms.Button btnJoinRoom;
+    private System.Windows.Forms.Button btnLeaveRoom;
+    private System.Windows.Forms.Button btnRun;
+    private System.Windows.Forms.Button btnCancelRoom;
+    private System.Windows.Forms.ListBox lbxRoomUsers;
+    private System.Windows.Forms.Label lblRoomUsers;
   }
 }
 

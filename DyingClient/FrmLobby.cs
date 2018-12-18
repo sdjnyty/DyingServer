@@ -24,9 +24,9 @@ namespace DyingClient
     private HubConnection _hc;
     internal IHubProxy _hp;
     private string exePath = (string)Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Microsoft Games\Age of Empires II: The Conquerors Expansion\1.0").GetValue("EXE Path");
-    private UdpClient _udpOutgoing ;
-    private UdpClient _udpIncoming ;
-    private TcpListener _tcpOutgoing ;
+    private UdpClient _udpOutgoing;
+    private UdpClient _udpIncoming;
+    private TcpListener _tcpOutgoing;
     //Tuple<RemoteIp,RemotePort,LocalPort>
     private Dictionary<Tuple<int, int, int>, TcpClient> _tcpIncoming = new Dictionary<Tuple<int, int, int>, TcpClient>();
     private int _vip;
@@ -43,6 +43,10 @@ namespace DyingClient
     {
       btnLogout.Enabled = false;
       btnCreateRoom.Enabled = false;
+      btnJoinRoom.Enabled = false;
+      btnLeaveRoom.Enabled = false;
+      btnCancelRoom.Enabled = false;
+      btnRun.Enabled = false;
     }
 
     private async void btnLogin_Click(object sender, EventArgs e)
@@ -61,6 +65,9 @@ namespace DyingClient
         _hp.On<string>(nameof(UserLogin), UserLogin);
         _hp.On<string>(nameof(UserLogout), UserLogout);
         _hp.On<string>(nameof(CreateRoom), CreateRoom);
+        _hp.On<string, string>(nameof(JoinRoom), JoinRoom);
+        _hp.On<string>(nameof(DestroyRoom), DestroyRoom);
+        _hp.On<string>(nameof(LeaveRoom), LeaveRoom);
         await _hc.Start();
         _hc.Closed += _hc_Closed;
         _userId = txtUserName.Text;
@@ -70,6 +77,7 @@ namespace DyingClient
         lbxOnlineUsers.Items.AddRange(lr.OnlineUsers.ToArray());
         btnLogout.Enabled = true;
         btnCreateRoom.Enabled = true;
+        btnJoinRoom.Enabled = true;
       }
     }
 
@@ -298,11 +306,12 @@ namespace DyingClient
       _roomId = await _hp.Invoke<string>("CreateRoom");
       AppendLine($"创建了房间“{_roomId}”");
       lbxRooms.Items.Add(_roomId);
+      lbxRoomUsers.Items.Add(_userId);
       AppendLine($"已进入房间“{_roomId}”");
-      var frmRoom = new FrmRoom();
-      frmRoom.Text = _roomId;
-      frmRoom.lblHostName.Text = "房间主机：" + _userId;
-      frmRoom.ShowDialog();
+      btnJoinRoom.Enabled = false;
+      btnLeaveRoom.Enabled = false;
+      btnCancelRoom.Enabled = true;
+      btnRun.Enabled = true;
     }
 
     private void CreateRoom(string roomId)
@@ -310,7 +319,7 @@ namespace DyingClient
       lbxRooms.Invoke((Action)(() =>
      {
        lbxRooms.Items.Add(roomId);
-      }));
+     }));
 
     }
 
@@ -331,7 +340,76 @@ namespace DyingClient
 
     private void UserLogout(string userId)
     {
-      lbxOnlineUsers.Invoke((Action) (() => { lbxOnlineUsers.Items.Remove(userId); }));
+      lbxOnlineUsers.Invoke((Action)(() => { lbxOnlineUsers.Items.Remove(userId); }));
+    }
+
+    private async void btnCancelRoom_Click(object sender, EventArgs e)
+    {
+      btnCancelRoom.Enabled = false;
+      await _hp.Invoke("DestroyRoom");
+      btnCreateRoom.Enabled = true;
+      btnRun.Enabled = false;
+      AppendLine("已取消房间");
+      lbxRooms.Items.Remove(_roomId);
+      lbxRoomUsers.Items.Clear();
+    }
+
+    private async void btnJoinRoom_Click(object sender, EventArgs e)
+    {
+      if (lbxRooms.SelectedItem is string roomId)
+      {
+        btnJoinRoom.Enabled = false;
+        btnCreateRoom.Enabled = false;
+        var roomUsers = await _hp.Invoke<List<string>>("JoinRoom", roomId);
+        _roomId = roomId;
+        lbxRoomUsers.Items.AddRange(roomUsers.ToArray());
+        btnLeaveRoom.Enabled = true;
+        AppendLine($"已进入房间 “{_roomId}”");
+      }
+      else
+      {
+        MessageBox.Show("请选择房间");
+      }
+    }
+
+    private void JoinRoom(string roomId, string userId)
+    {
+      if (_roomId == roomId)
+      {
+        AppendLine($"{userId} 进入了房间");
+        lbxRoomUsers.Invoke((Action)(() => { lbxRoomUsers.Items.Add(userId); }));
+      }
+    }
+
+    private async void btnLeaveRoom_Click(object sender, EventArgs e)
+    {
+      btnLeaveRoom.Enabled = false;
+      await _hp.Invoke("LeaveRoom");
+      _roomId = null;
+      btnCreateRoom.Enabled = true;
+      btnJoinRoom.Enabled = true;
+      lbxRoomUsers.Items.Clear();
+      AppendLine("已离开房间");
+    }
+
+    private void LeaveRoom(string userId)
+    {
+      AppendLine($"{userId} 离开了房间");
+      lbxRoomUsers.Invoke((Action)(() => { lbxRoomUsers.Items.Remove(userId); }));
+    }
+
+    private void DestroyRoom(string roomId)
+    {
+      lbxRooms.Invoke((Action)(() => { lbxRooms.Items.Remove(roomId); }));
+      if (_roomId == roomId)
+      {
+        _roomId = null;
+        btnLeaveRoom.Enabled = false;
+        btnCreateRoom.Enabled = true;
+        btnJoinRoom.Enabled = true;
+        lbxRoomUsers.Items.Clear();
+        AppendLine($"房间 {roomId} 已被取消");
+      }
     }
   }
 

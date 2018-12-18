@@ -52,6 +52,7 @@
       this.btnLeaveRoom.TabIndex = 1;
       this.btnLeaveRoom.Text = "离开房间";
       this.btnLeaveRoom.UseVisualStyleBackColor = true;
+      this.btnLeaveRoom.Click += new System.EventHandler(this.btnLeaveRoom_Click);
       // 
       // lblPlayers
       // 
