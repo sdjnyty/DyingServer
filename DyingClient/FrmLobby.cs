@@ -1,12 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+using System.Diagnostics;
 using System.Windows.Forms;
 using Microsoft.AspNet.SignalR.Client;
 using EasyHook;
@@ -68,6 +64,7 @@ namespace DyingClient
         _hp.On<string, string>(nameof(JoinRoom), JoinRoom);
         _hp.On<string>(nameof(DestroyRoom), DestroyRoom);
         _hp.On<string>(nameof(LeaveRoom), LeaveRoom);
+        _hp.On(nameof(RunGame), RunGame);
         await _hc.Start();
         _hc.Closed += _hc_Closed;
         _userId = txtUserName.Text;
@@ -194,23 +191,8 @@ namespace DyingClient
       }
     }
 
-    private async void btnRunHost_Click(object sender, EventArgs e)
-    {
-      string channel = null;
-      RemoteHooking.IpcCreateServer<Injector.ServerInterface>(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
-      var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
-      RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), "HOST_IP_LAUNCH \"hostName\"",
-              0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
-      //await UploadRec();
-    }
-
     private void btnRunClient_Click(object sender, EventArgs e)
     {
-      string channel = null;
-      RemoteHooking.IpcCreateServer<Injector.ServerInterface>(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
-      var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
-      RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), "CLIENT_IP_LAUNCH \"clientName\" " + txtUserName.Text,
-              0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
     }
 
     private async Task UploadRec()
@@ -257,31 +239,45 @@ namespace DyingClient
 
     private async Task ProduceUdpOutQ()
     {
-      while (true)
+      try
       {
-        var result = await _udpOutgoing.ReceiveAsync();
-        using (var ms = new MemoryStream(result.Buffer))
-        using (var sr = new BinaryReader(ms))
+        while (true)
         {
-          var toIp = sr.ReadInt32();
-          var toPort = (int)sr.ReadUInt16();
-          var data = sr.ReadBytes((int)ms.Length - 6);
-          _qUdpOut.TryAdd(Tuple.Create(toIp, toPort, result.RemoteEndPoint.Port, data));
-          AppendLine($"SendTo from={result.RemoteEndPoint} to={new IPAddress(toIp)}:{toPort} data={BitConverter.ToString(data)}");
+          var result = await _udpOutgoing.ReceiveAsync();
+          using (var ms = new MemoryStream(result.Buffer))
+          using (var sr = new BinaryReader(ms))
+          {
+            var toIp = sr.ReadInt32();
+            var toPort = (int)sr.ReadUInt16();
+            var data = sr.ReadBytes((int)ms.Length - 6);
+            _qUdpOut.TryAdd(Tuple.Create(toIp, toPort, result.RemoteEndPoint.Port, data));
+            AppendLine($"SendTo from={result.RemoteEndPoint} to={new IPAddress(toIp)}:{toPort} data={BitConverter.ToString(data)}");
+          }
         }
+      }
+      catch (SocketException)
+      {
+
       }
     }
 
     private async Task ConsumeUdpOutQ()
     {
-      while (true)
+      try
       {
-        var item = await Task.Run(() =>
+        while (true)
         {
-          _qUdpOut.TryTake(out var tup, -1);
-          return tup;
-        });
-        await _hp.Invoke("SendTo", item.Item1, item.Item2, item.Item3, item.Item4);
+          var item = await Task.Run(() =>
+          {
+            _qUdpOut.TryTake(out var tup, -1);
+            return tup;
+          });
+          await _hp.Invoke("SendTo", item.Item1, item.Item2, item.Item3, item.Item4);
+        }
+      }
+      catch (SocketException)
+      {
+
       }
     }
 
@@ -321,21 +317,6 @@ namespace DyingClient
        lbxRooms.Items.Add(roomId);
      }));
 
-    }
-
-    private async Task SetupSockets()
-    {
-      _udpOutgoing = new UdpClient(123 * 256 + 123);
-      _udpIncoming = new UdpClient(122 * 256 + 122);
-      var _ = ProduceUdpOutQ();
-      _ = ConsumeUdpOutQ();
-      _tcpOutgoing = new TcpListener(IPAddress.Loopback, 123 * 256 + 123);
-      _tcpOutgoing.Start();
-      while (true)
-      {
-        var tcpOut = await _tcpOutgoing.AcceptTcpClientAsync();
-        var _1 = TcpOut(tcpOut);
-      }
     }
 
     private void UserLogout(string userId)
@@ -410,6 +391,78 @@ namespace DyingClient
         lbxRoomUsers.Items.Clear();
         AppendLine($"房间 {roomId} 已被取消");
       }
+    }
+
+    private async void btnRun_Click(object sender, EventArgs e)
+    {
+      btnRun.Enabled = false;
+      AppendLine("正在启动游戏");
+      string channel = null;
+      RemoteHooking.IpcCreateServer<Injector.ServerInterface>(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
+      var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
+      var _ = SetupSockets();
+      RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), $"HOST_IP_LAUNCH \"{_userId}\"", 0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
+      var process = Process.GetProcessById(pid);
+      AppendLine("游戏已启动");
+      await Task.Delay(8000);
+      await _hp.Invoke("RunGame");
+      await WaitForExitAsync(process);
+      AppendLine("游戏已退出");
+      TearDownSockets();
+      btnRun.Enabled = true;
+    }
+
+    private async Task SetupSockets()
+    {
+      _udpOutgoing = new UdpClient(123 * 256 + 123);
+      _udpIncoming = new UdpClient(122 * 256 + 122);
+      var _ = ProduceUdpOutQ();
+      _ = ConsumeUdpOutQ();
+      _tcpOutgoing = new TcpListener(IPAddress.Loopback, 123 * 256 + 123);
+      _tcpOutgoing.Start();
+      try
+      {
+        while (true)
+        {
+          var tcpOut = await _tcpOutgoing.AcceptTcpClientAsync();
+          var _1 = TcpOut(tcpOut);
+        }
+      }
+      catch (SocketException)
+      {
+
+      }
+    }
+
+    private void TearDownSockets()
+    {
+      _tcpOutgoing.Stop();
+      _udpOutgoing.Close();
+      _udpIncoming.Close();
+    }
+
+    private static Task WaitForExitAsync(Process process)
+    {
+      var tcs = new TaskCompletionSource<object>();
+      process.EnableRaisingEvents = true;
+      process.Exited += (s, e) => tcs.TrySetResult(null);
+      return tcs.Task;
+    }
+
+    private async void RunGame()
+    {
+      var hostIp = await _hp.Invoke<int>("GetHostVipByRoomId", _roomId);
+      AppendLine("正在启动游戏");
+      string channel = null;
+      RemoteHooking.IpcCreateServer<Injector.ServerInterface>(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
+      var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
+      var _ = SetupSockets();
+      RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), $"CLIENT_IP_LAUNCH \"{_userId}\" {new IPAddress(hostIp)}", 0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
+      var process = Process.GetProcessById(pid);
+      AppendLine("游戏已启动");
+      await WaitForExitAsync(process);
+      AppendLine("游戏已退出");
+      TearDownSockets();
     }
   }
 

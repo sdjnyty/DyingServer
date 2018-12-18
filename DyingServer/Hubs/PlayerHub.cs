@@ -151,6 +151,17 @@ namespace DyingServer.Hubs
       Clients.Group(ri.RoomId).LeaveRoom(fromPlayer.UserId);
       fromPlayer.RoomId = null;
     }
+
+    public int GetHostVipByRoomId(string roomId)
+    {
+      return PlayerInfoPool.GetByUid(RoomPool.GetById(roomId).HostId).Vip;
+    }
+
+    public void RunGame()
+    {
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      Clients.OthersInGroup(fromPlayer.RoomId).RunGame();
+    }
   }
 
   public interface IPlayerClient
@@ -165,6 +176,7 @@ namespace DyingServer.Hubs
     void JoinRoom(string roomId,string userId);
     void DestroyRoom(string roomId);
     void LeaveRoom(string userId);
+    void RunGame();
   }
 
   public class LoginResult
