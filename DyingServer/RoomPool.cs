@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Web;
+using POCO;
 
 namespace DyingServer
 {
@@ -23,12 +24,5 @@ namespace DyingServer
     {
       return _idDic[rid];
     }
-  }
-
-  public class RoomInfo
-  {
-    public string RoomId { get; set; }
-    public string HostId { get; set; }
-    public List<string> Players { get; } = new List<string>();
   }
 }

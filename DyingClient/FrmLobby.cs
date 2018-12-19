@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using System.Windows.Forms;
@@ -9,6 +10,7 @@ using EasyHook;
 using System.IO;
 using System.Net.Sockets;
 using System.Net;
+using POCO;
 
 namespace DyingClient
 {
@@ -23,10 +25,13 @@ namespace DyingClient
     private UdpClient _udpOutgoing;
     private UdpClient _udpIncoming;
     private TcpListener _tcpOutgoing;
+    private TcpListener _tcpRec;
     //Tuple<RemoteIp,RemotePort,LocalPort>
     private Dictionary<Tuple<int, int, int>, TcpClient> _tcpIncoming = new Dictionary<Tuple<int, int, int>, TcpClient>();
     private int _vip;
     private BlockingCollection<Tuple<int, int, int, byte[]>> _qUdpOut = new BlockingCollection<Tuple<int, int, int, byte[]>>();
+    private BlockingCollection<byte[]> _qRec = new BlockingCollection<byte[]>();
+    private CancellationTokenSource _cts;
 
     public FrmLobby()
     {
@@ -43,6 +48,7 @@ namespace DyingClient
       btnLeaveRoom.Enabled = false;
       btnCancelRoom.Enabled = false;
       btnRun.Enabled = false;
+      btnSpectate.Enabled = false;
     }
 
     private async void btnLogin_Click(object sender, EventArgs e)
@@ -62,9 +68,14 @@ namespace DyingClient
         _hp.On<string>(nameof(UserLogout), UserLogout);
         _hp.On<string>(nameof(CreateRoom), CreateRoom);
         _hp.On<string, string>(nameof(JoinRoom), JoinRoom);
+        _hp.On<string, string>(nameof(SpectateRoom), SpectateRoom);
         _hp.On<string>(nameof(DestroyRoom), DestroyRoom);
         _hp.On<string>(nameof(LeaveRoom), LeaveRoom);
         _hp.On(nameof(RunGame), RunGame);
+        _hp.On<string, string>(nameof(Chat), Chat);
+        _hp.On<byte[]>("UploadRec", RecReceived);
+        _hp.On(nameof(RunSpectate), RunSpectate);
+        _hp.On(nameof(EndRec), EndRec);
         await _hc.Start();
         _hc.Closed += _hc_Closed;
         _userId = txtUserName.Text;
@@ -75,6 +86,7 @@ namespace DyingClient
         btnLogout.Enabled = true;
         btnCreateRoom.Enabled = true;
         btnJoinRoom.Enabled = true;
+        btnSpectate.Enabled = true;
       }
     }
 
@@ -85,6 +97,14 @@ namespace DyingClient
       lbxOnlineUsers.Items.Clear();
       btnLogin.Enabled = true;
       btnLogout.Enabled = false;
+      btnJoinRoom.Enabled = false;
+      btnCreateRoom.Enabled = false;
+      btnCancelRoom.Enabled = false;
+      btnSpectate.Enabled = false;
+      btnLogout.Enabled = false;
+      lbxRooms.Items.Clear();
+      lbxRoomUsers.Items.Clear();
+      lbxSpectators.Items.Clear();
     }
 
     private async Task TcpOut(TcpClient tcp)
@@ -191,10 +211,6 @@ namespace DyingClient
       }
     }
 
-    private void btnRunClient_Click(object sender, EventArgs e)
-    {
-    }
-
     private async Task UploadRec()
     {
       var tcpClient = new TcpClient(AddressFamily.InterNetwork);
@@ -215,15 +231,13 @@ namespace DyingClient
       var buffer = new byte[2048];
       try
       {
-        var pos = 0;
         while (true)
         {
           var count = stream.Read(buffer, 0, buffer.Length);
           if (count == 0) break;
           var upload = new byte[count];
           Array.Copy(buffer, upload, count);
-          await _hp.Invoke("UploadRec", pos, upload);
-          pos += count;
+          await _hp.Invoke("UploadRec", upload);
         }
       }
       catch (IOException)
@@ -292,7 +306,14 @@ namespace DyingClient
     private void btnLogout_Click(object sender, EventArgs e)
     {
       AppendLine("正在登出...");
+      btnJoinRoom.Enabled = false;
+      btnCreateRoom.Enabled = false;
+      btnCancelRoom.Enabled = false;
+      btnSpectate.Enabled = false;
       btnLogout.Enabled = false;
+      lbxRooms.Items.Clear();
+      lbxRoomUsers.Items.Clear();
+      lbxSpectators.Items.Clear();
       _hc.Stop();
     }
 
@@ -308,6 +329,7 @@ namespace DyingClient
       btnLeaveRoom.Enabled = false;
       btnCancelRoom.Enabled = true;
       btnRun.Enabled = true;
+      btnSpectate.Enabled = false;
     }
 
     private void CreateRoom(string roomId)
@@ -330,6 +352,7 @@ namespace DyingClient
       await _hp.Invoke("DestroyRoom");
       btnCreateRoom.Enabled = true;
       btnRun.Enabled = false;
+      btnSpectate.Enabled = true;
       AppendLine("已取消房间");
       lbxRooms.Items.Remove(_roomId);
       lbxRoomUsers.Items.Clear();
@@ -341,9 +364,11 @@ namespace DyingClient
       {
         btnJoinRoom.Enabled = false;
         btnCreateRoom.Enabled = false;
-        var roomUsers = await _hp.Invoke<List<string>>("JoinRoom", roomId);
+        btnSpectate.Enabled = false;
+        var roomInfo = await _hp.Invoke<RoomInfo>("JoinRoom", roomId);
         _roomId = roomId;
-        lbxRoomUsers.Items.AddRange(roomUsers.ToArray());
+        lbxRoomUsers.Items.AddRange(roomInfo.Players.ToArray());
+        lbxSpectators.Items.AddRange(roomInfo.Spectators.ToArray());
         btnLeaveRoom.Enabled = true;
         AppendLine($"已进入房间 “{_roomId}”");
       }
@@ -362,6 +387,15 @@ namespace DyingClient
       }
     }
 
+    private void SpectateRoom(string roomId, string userId)
+    {
+      if (_roomId == roomId)
+      {
+        AppendLine($"{userId} 前来围观");
+        lbxSpectators.Invoke((Action)(() => { lbxSpectators.Items.Add(userId); }));
+      }
+    }
+
     private async void btnLeaveRoom_Click(object sender, EventArgs e)
     {
       btnLeaveRoom.Enabled = false;
@@ -369,6 +403,7 @@ namespace DyingClient
       _roomId = null;
       btnCreateRoom.Enabled = true;
       btnJoinRoom.Enabled = true;
+      btnSpectate.Enabled = true;
       lbxRoomUsers.Items.Clear();
       AppendLine("已离开房间");
     }
@@ -464,11 +499,70 @@ namespace DyingClient
       AppendLine("游戏已退出");
       TearDownSockets();
     }
-  }
 
-  public class LoginResult
-  {
-    public int Vip { get; set; }
-    public List<string> OnlineUsers { get; set; }
+    private async void btnSpectate_Click(object sender, EventArgs e)
+    {
+      if (lbxRooms.SelectedItem is string roomId)
+      {
+        btnJoinRoom.Enabled = false;
+        btnSpectate.Enabled = false;
+        btnCreateRoom.Enabled = false;
+        var roomInfo = await _hp.Invoke<RoomInfo>("SpectateRoom", roomId);
+        _roomId = roomId;
+        lbxRoomUsers.Items.AddRange(roomInfo.Players.ToArray());
+        lbxSpectators.Items.AddRange(roomInfo.Spectators.ToArray());
+        btnLeaveRoom.Enabled = true;
+        AppendLine($"已进入房间 “{_roomId}”");
+      }
+      else
+      {
+        MessageBox.Show("请选择房间");
+      }
+    }
+
+    private async void txxChat_KeyDown(object sender, KeyEventArgs e)
+    {
+      if (e.KeyCode == Keys.Return)
+      {
+        await _hp.Invoke("Chat", txxChat.Text);
+        txxChat.Text = "";
+      }
+    }
+
+    private void Chat(string userId, string message)
+    {
+      AppendLine($"{userId}: {message}");
+    }
+
+    private void RecReceived(byte[] data)
+    {
+      _qRec.TryAdd(data);
+    }
+
+    private void RunSpectate()
+    {
+      _tcpRec = new TcpListener(IPAddress.Loopback, 53754);
+      _tcpRec.Start();
+      var process = Process.Start(Path.Combine(exePath, @"age2_x1\spectate.exe"), "localhost");
+      var tc=_tcpRec.AcceptTcpClient();
+      _cts = new CancellationTokenSource();
+      try
+      {
+        while (true)
+        {
+          _qRec.TryTake(out var data, -1, _cts.Token);
+          tc.GetStream().Write(data, 0, data.Length);
+        }
+      }
+      catch (TaskCanceledException)
+      {
+        tc.Close();
+      }
+    }
+
+    private void EndRec()
+    {
+      _cts.Cancel();
+    }
   }
 }

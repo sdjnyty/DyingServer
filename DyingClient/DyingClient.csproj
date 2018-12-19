@@ -129,6 +129,10 @@
       <Project>{7a85cbd3-aab6-4df4-bf0f-2598c2e13253}</Project>
       <Name>Injector</Name>
     </ProjectReference>
+    <ProjectReference Include="..\POCO\POCO.csproj">
+      <Project>{13ed03db-2315-49d3-b61c-010c720b6b8a}</Project>
+      <Name>POCO</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
