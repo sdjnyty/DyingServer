@@ -441,6 +441,7 @@ namespace DyingClient
       AppendLine("游戏已启动");
       await Task.Delay(8000);
       await _hp.Invoke("RunGame");
+      var _1 = UploadRec();
       await WaitForExitAsync(process);
       AppendLine("游戏已退出");
       TearDownSockets();
@@ -539,25 +540,28 @@ namespace DyingClient
       _qRec.TryAdd(data);
     }
 
-    private void RunSpectate()
+    private async void RunSpectate()
     {
       _tcpRec = new TcpListener(IPAddress.Loopback, 53754);
       _tcpRec.Start();
       var process = Process.Start(Path.Combine(exePath, @"age2_x1\spectate.exe"), "localhost");
-      var tc=_tcpRec.AcceptTcpClient();
+      var tc = _tcpRec.AcceptTcpClient();
       _cts = new CancellationTokenSource();
-      try
+      await Task.Run(() =>
       {
-        while (true)
+        try
         {
-          _qRec.TryTake(out var data, -1, _cts.Token);
-          tc.GetStream().Write(data, 0, data.Length);
+          while (true)
+          {
+            _qRec.TryTake(out var data, -1, _cts.Token);
+            tc.GetStream().Write(data, 0, data.Length);
+          }
         }
-      }
-      catch (TaskCanceledException)
-      {
-        tc.Close();
-      }
+        catch (TaskCanceledException)
+        {
+          tc.Close();
+        }
+      });
     }
 
     private void EndRec()
