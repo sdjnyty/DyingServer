@@ -32,6 +32,7 @@ namespace DyingClient
     private BlockingCollection<Tuple<int, int, int, byte[]>> _qUdpOut = new BlockingCollection<Tuple<int, int, int, byte[]>>();
     private BlockingCollection<byte[]> _qRec = new BlockingCollection<byte[]>();
     private CancellationTokenSource _cts;
+    private HashSet<IDisposable> _subscribers = new HashSet<IDisposable>();
 
     public FrmLobby()
     {
@@ -61,21 +62,21 @@ namespace DyingClient
       {
         btnLogin.Enabled = false;
         _hp = _hc.CreateHubProxy("PlayerHub");
-        _hp.On<int, int, int, byte[]>(nameof(OnReceiveFrom), OnReceiveFrom);
-        _hp.On<int, int, int>(nameof(OnTcpConnect), OnTcpConnect);
-        _hp.On<int, int, int, byte[]>(nameof(OnTcpSend), OnTcpSend);
-        _hp.On<string>(nameof(UserLogin), UserLogin);
-        _hp.On<string>(nameof(UserLogout), UserLogout);
-        _hp.On<string>(nameof(CreateRoom), CreateRoom);
-        _hp.On<string, string>(nameof(JoinRoom), JoinRoom);
-        _hp.On<string, string>(nameof(SpectateRoom), SpectateRoom);
-        _hp.On<string>(nameof(DestroyRoom), DestroyRoom);
-        _hp.On<string>(nameof(LeaveRoom), LeaveRoom);
-        _hp.On(nameof(RunGame), RunGame);
-        _hp.On<string, string>(nameof(Chat), Chat);
-        _hp.On<byte[]>("UploadRec", RecReceived);
-        _hp.On(nameof(RunSpectate), RunSpectate);
-        _hp.On(nameof(EndRec), EndRec);
+        _subscribers.Add( _hp.On<int, int, int, byte[]>(nameof(OnReceiveFrom), OnReceiveFrom));
+        _subscribers.Add( _hp.On<int, int, int>(nameof(OnTcpConnect), OnTcpConnect));
+        _subscribers.Add( _hp.On<int, int, int, byte[]>(nameof(OnTcpSend), OnTcpSend));
+        _subscribers.Add( _hp.On<string>(nameof(UserLogin), UserLogin));
+        _subscribers.Add( _hp.On<string>(nameof(UserLogout), UserLogout));
+        _subscribers.Add( _hp.On<string>(nameof(CreateRoom), CreateRoom));
+        _subscribers.Add( _hp.On<string, string>(nameof(JoinRoom), JoinRoom));
+        _subscribers.Add( _hp.On<string, string>(nameof(SpectateRoom), SpectateRoom));
+        _subscribers.Add(_hp.On<string>(nameof(DestroyRoom), DestroyRoom));
+        _subscribers.Add(_hp.On<string>(nameof(LeaveRoom), LeaveRoom));
+        _subscribers.Add(_hp.On(nameof(RunGame), RunGame));
+        _subscribers.Add(_hp.On<string, string>(nameof(Chat), Chat));
+        _subscribers.Add(_hp.On<byte[]>("UploadRec", RecReceived));
+        _subscribers.Add(_hp.On(nameof(RunSpectate), RunSpectate));
+        _subscribers.Add(_hp.On(nameof(EndRec), EndRec));
         await _hc.Start();
         _hc.Closed += _hc_Closed;
         _userId = txtUserName.Text;
@@ -93,6 +94,11 @@ namespace DyingClient
     private void _hc_Closed()
     {
       _hc.Closed -= _hc_Closed;
+      foreach(var subsc in _subscribers)
+      {
+        subsc.Dispose();
+      }
+      _subscribers.Clear();
       AppendLine("已离线");
       lbxOnlineUsers.Items.Clear();
       btnLogin.Enabled = true;
@@ -439,7 +445,7 @@ namespace DyingClient
       RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), $"HOST_IP_LAUNCH \"{_userId}\"", 0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
       var process = Process.GetProcessById(pid);
       AppendLine("游戏已启动");
-      await Task.Delay(8000);
+      await Task.Delay(12000);
       await _hp.Invoke("RunGame");
       var _1 = UploadRec();
       await WaitForExitAsync(process);

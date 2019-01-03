@@ -41,18 +41,26 @@ namespace DyingServer.Hubs
 
     public LoginResult Login(string userId)
     {
-      var vip = IpPool.AllocateIp();
-      var pi = new PlayerInfo
+      var pi = PlayerInfoPool.GetByUid(userId);
+      if (pi == null)
       {
-        UserId = userId,
-        Vip = vip,
-        ConnectionId = Context.ConnectionId,
-      };
-      PlayerInfoPool.Add(pi);
+        var vip = IpPool.AllocateIp();
+        pi = new PlayerInfo
+        {
+          UserId = userId,
+          Vip = vip,
+          ConnectionId = Context.ConnectionId,
+        };
+        PlayerInfoPool.Add(pi);
+      }
+      else
+      {
+        pi.ConnectionId = Context.ConnectionId;
+      }
       Clients.Others.UserLogin(userId);
       return new LoginResult
       {
-        Vip = vip,
+        Vip = pi.Vip,
         OnlineUsers = PlayerInfoPool.Enumerate().Select(p => p.UserId).ToList(),
       };
     }

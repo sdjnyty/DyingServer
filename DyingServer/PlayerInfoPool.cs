@@ -27,17 +27,17 @@ namespace DyingServer
 
     public static PlayerInfo GetByVip(int vip)
     {
-      return _vipDic[vip];
+      return _vipDic.TryGetValue(vip, out var ret) ? ret : null;
     }
 
     public static PlayerInfo GetByCid(string cid)
     {
-      return _cidDic[cid];
+      return _cidDic.TryGetValue(cid, out var ret) ? ret : null;
     }
 
     public static PlayerInfo GetByUid(string uid)
     {
-      return _uidDic[uid];
+      return _uidDic.TryGetValue(uid, out var ret) ? ret : null;
     }
 
     public static IEnumerable<PlayerInfo> Enumerate()
