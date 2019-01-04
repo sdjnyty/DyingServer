@@ -62,6 +62,7 @@ namespace DyingServer.Hubs
       {
         Vip = pi.Vip,
         OnlineUsers = PlayerInfoPool.Enumerate().Select(p => p.UserId).ToList(),
+        Rooms=RoomPool.Enumerate().Select(ri=>ri.RoomId).ToList(),
       };
     }
 
@@ -176,6 +177,12 @@ namespace DyingServer.Hubs
       return PlayerInfoPool.GetByUid(RoomPool.GetById(roomId).HostId).Vip;
     }
 
+    public void HostStartGame()
+    {
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      Clients.OthersInGroup($"{fromPlayer.RoomId}:player").HostStartGame();
+    }
+
     public void RunGame()
     {
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
@@ -216,6 +223,7 @@ namespace DyingServer.Hubs
     void JoinRoom(string roomId, string userId);
     void DestroyRoom(string roomId);
     void LeaveRoom(string userId);
+    void HostStartGame();
     void RunGame();
     void SpectateRoom(string roomId, string userId);
     void UploadRec(byte[] data);

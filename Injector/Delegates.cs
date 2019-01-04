@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 using System.Net.Sockets;
+using System.Text;
 
 namespace Injector
 {
@@ -22,6 +23,9 @@ namespace Injector
     public delegate bool CreateProcessA(string applicationName, string commandLine, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint creationFlags, IntPtr environment, string
 currentDirectory, IntPtr startupInfo, out ProcessInformation processInformation);
 
+    [UnmanagedFunctionPointer(CallingConvention.Winapi,CharSet= CharSet.Ansi)]
+    public delegate int DrawTextA(IntPtr dc, string pStr, int count, ref RECT rect, DT_ format);
+
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Ansi)]
     public delegate IntPtr GetHostByName(IntPtr name);
 
@@ -37,6 +41,9 @@ currentDirectory, IntPtr startupInfo, out ProcessInformation processInformation)
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate IntPtr LoadLibraryA(string fileName);
 
+    [UnmanagedFunctionPointer(CallingConvention.Winapi,CharSet= CharSet.Ansi)]
+    public delegate int LoadStringA(IntPtr instance, uint id, IntPtr buffer, int bufferMax);
+
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate int Recv(int socket, IntPtr buff, int len, int flags);
 
@@ -51,6 +58,9 @@ currentDirectory, IntPtr startupInfo, out ProcessInformation processInformation)
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate int Socket(AddressFamily af, SocketType type, ProtocolType protocol);
+
+    [UnmanagedFunctionPointer( CallingConvention.Winapi,CharSet= CharSet.Ansi)]
+    public delegate bool TextOutA(IntPtr dc, int xStart, int yStart, string pStr, int strLen);
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate SocketError WSARecv(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesRecvd, ref int flags, IntPtr pOverlapped, IntPtr pCompletionRoutine);

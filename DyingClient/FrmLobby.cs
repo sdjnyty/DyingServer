@@ -33,6 +33,7 @@ namespace DyingClient
     private BlockingCollection<byte[]> _qRec = new BlockingCollection<byte[]>();
     private CancellationTokenSource _cts;
     private HashSet<IDisposable> _subscribers = new HashSet<IDisposable>();
+    private Injector.ServerInterface _serverInterface = new Injector.ServerInterface();
 
     public FrmLobby()
     {
@@ -62,16 +63,17 @@ namespace DyingClient
       {
         btnLogin.Enabled = false;
         _hp = _hc.CreateHubProxy("PlayerHub");
-        _subscribers.Add( _hp.On<int, int, int, byte[]>(nameof(OnReceiveFrom), OnReceiveFrom));
-        _subscribers.Add( _hp.On<int, int, int>(nameof(OnTcpConnect), OnTcpConnect));
-        _subscribers.Add( _hp.On<int, int, int, byte[]>(nameof(OnTcpSend), OnTcpSend));
-        _subscribers.Add( _hp.On<string>(nameof(UserLogin), UserLogin));
-        _subscribers.Add( _hp.On<string>(nameof(UserLogout), UserLogout));
-        _subscribers.Add( _hp.On<string>(nameof(CreateRoom), CreateRoom));
-        _subscribers.Add( _hp.On<string, string>(nameof(JoinRoom), JoinRoom));
-        _subscribers.Add( _hp.On<string, string>(nameof(SpectateRoom), SpectateRoom));
+        _subscribers.Add(_hp.On<int, int, int, byte[]>(nameof(OnReceiveFrom), OnReceiveFrom));
+        _subscribers.Add(_hp.On<int, int, int>(nameof(OnTcpConnect), OnTcpConnect));
+        _subscribers.Add(_hp.On<int, int, int, byte[]>(nameof(OnTcpSend), OnTcpSend));
+        _subscribers.Add(_hp.On<string>(nameof(UserLogin), UserLogin));
+        _subscribers.Add(_hp.On<string>(nameof(UserLogout), UserLogout));
+        _subscribers.Add(_hp.On<string>(nameof(CreateRoom), CreateRoom));
+        _subscribers.Add(_hp.On<string, string>(nameof(JoinRoom), JoinRoom));
+        _subscribers.Add(_hp.On<string, string>(nameof(SpectateRoom), SpectateRoom));
         _subscribers.Add(_hp.On<string>(nameof(DestroyRoom), DestroyRoom));
         _subscribers.Add(_hp.On<string>(nameof(LeaveRoom), LeaveRoom));
+        _subscribers.Add(_hp.On(nameof(HostStartGame), HostStartGame));
         _subscribers.Add(_hp.On(nameof(RunGame), RunGame));
         _subscribers.Add(_hp.On<string, string>(nameof(Chat), Chat));
         _subscribers.Add(_hp.On<byte[]>("UploadRec", RecReceived));
@@ -84,6 +86,7 @@ namespace DyingClient
         _vip = lr.Vip;
         AppendLine($"登录成功，用户名 {_userId} ;虚拟IP {new IPAddress(_vip)}");
         lbxOnlineUsers.Items.AddRange(lr.OnlineUsers.ToArray());
+        lbxRooms.Items.AddRange(lr.Rooms.ToArray());
         btnLogout.Enabled = true;
         btnCreateRoom.Enabled = true;
         btnJoinRoom.Enabled = true;
@@ -94,7 +97,7 @@ namespace DyingClient
     private void _hc_Closed()
     {
       _hc.Closed -= _hc_Closed;
-      foreach(var subsc in _subscribers)
+      foreach (var subsc in _subscribers)
       {
         subsc.Dispose();
       }
@@ -439,19 +442,29 @@ namespace DyingClient
       btnRun.Enabled = false;
       AppendLine("正在启动游戏");
       string channel = null;
-      RemoteHooking.IpcCreateServer<Injector.ServerInterface>(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
+      RemoteHooking.IpcCreateServer(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton, _serverInterface);
+      _serverInterface.Port47624Bind += _serverInterface_Port47624Bind;
+      _serverInterface.Port53754Bind += _serverInterface_Port53754Bind;
       var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
       var _ = SetupSockets();
       RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), $"HOST_IP_LAUNCH \"{_userId}\"", 0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
       var process = Process.GetProcessById(pid);
       AppendLine("游戏已启动");
-      await Task.Delay(12000);
-      await _hp.Invoke("RunGame");
-      var _1 = UploadRec();
+      await _hp.Invoke("HostStartGame");
       await WaitForExitAsync(process);
       AppendLine("游戏已退出");
       TearDownSockets();
       btnRun.Enabled = true;
+    }
+
+    private void _serverInterface_Port53754Bind(object sender, EventArgs e)
+    {
+      var _ = UploadRec();
+    }
+
+    private async void _serverInterface_Port47624Bind(object sender, EventArgs e)
+    {
+      await _hp.Invoke("RunGame");
     }
 
     private async Task SetupSockets()
@@ -491,12 +504,17 @@ namespace DyingClient
       return tcs.Task;
     }
 
+    private void HostStartGame()
+    {
+      AppendLine("房主已经开始启动游戏，请等待房主建立好房间，游戏将会自行启动，请稍候...");
+    }
+
     private async void RunGame()
     {
       var hostIp = await _hp.Invoke<int>("GetHostVipByRoomId", _roomId);
       AppendLine("正在启动游戏");
       string channel = null;
-      RemoteHooking.IpcCreateServer<Injector.ServerInterface>(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
+      RemoteHooking.IpcCreateServer(ref channel, System.Runtime.Remoting.WellKnownObjectMode.Singleton, _serverInterface);
       var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
       var _ = SetupSockets();
       RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), $"CLIENT_IP_LAUNCH \"{_userId}\" {new IPAddress(hostIp)}", 0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);

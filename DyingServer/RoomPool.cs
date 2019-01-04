@@ -24,5 +24,10 @@ namespace DyingServer
     {
       return _idDic[rid];
     }
+
+    public static IEnumerable<RoomInfo> Enumerate()
+    {
+      return _idDic.Values;
+    }
   }
 }

@@ -6,5 +6,6 @@ namespace POCO
   {
     public int Vip { get; set; }
     public List<string> OnlineUsers { get; set; }
+    public List<string> Rooms { get; set; }
   }
 }

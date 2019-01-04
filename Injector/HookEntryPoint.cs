@@ -7,11 +7,15 @@ using System.Runtime.InteropServices;
 using System.Net.Sockets;
 using System.Diagnostics;
 using System.Net;
+using System.Drawing;
 
 namespace Injector
 {
   public class HookEntryPoint : IEntryPoint
   {
+    private readonly StringFormat SF_Bottom = new StringFormat { LineAlignment = StringAlignment.Far };
+    private readonly StringFormat SF_Right = new StringFormat { Alignment = StringAlignment.Far };
+
     private const int LOCALHOST = 0x100007f;
     private string _userId;
     private int _vip;
@@ -52,6 +56,12 @@ namespace Injector
       _moduleName = Process.GetCurrentProcess().ProcessName;
       DllImports.LoadLibraryA("wsock32");
       DllImports.LoadLibraryA("ws2_32");
+      var hTextOut = LocalHook.Create(LocalHook.GetProcAddress("gdi32", "TextOutA"), new Delegates.TextOutA(TextOutA), this);
+      hTextOut.ThreadACL.SetExclusiveACL(new[] { 0 });
+      var hDrawTextA = LocalHook.Create(LocalHook.GetProcAddress("user32", "DrawTextA"), new Delegates.DrawTextA(DrawTextA), this);
+      hDrawTextA.ThreadACL.SetExclusiveACL(new[] { 0 });
+      var hLoadString = LocalHook.Create(LocalHook.GetProcAddress("user32", "LoadStringA"), new Delegates.LoadStringA(LoadStringA), this);
+      hLoadString.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hSendTo = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "sendto"), new Delegates.SendTo(SendTo), this);
       hSendTo.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hRecvFrom = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "recvfrom"), new Delegates.RecvFrom(RecvFrom), this);
@@ -156,6 +166,14 @@ namespace Injector
         else
         {
           si.LocalPort = addr.Port1 * 256 + addr.Port2;
+          if (addr.Port1 == 0xba && addr.Port2 == 0x8)
+          {
+            _server.OnPort47624Bind();
+          }
+          else if (addr.Port1 == 0xd1 && addr.Port2 == 0xfa)
+          {
+            _server.OnPort53754Bind();
+          }
         }
         _server.Echo($"{_moduleName} bind {si}");
       }
@@ -225,6 +243,29 @@ namespace Injector
       return true;
     }
 
+    private int DrawTextA(IntPtr dc, string str, int count, ref RECT rect, DT_ format)
+    {
+      var g = Graphics.FromHdc(dc);
+      var font = Font.FromHdc(dc);
+      var rectF = rect.ToRectangleF();
+      var color = DllImports.GetTextColor(dc).ToColor();
+      StringFormat sf;
+      if (format.HasFlag(DT_.DT_BOTTOM))
+      {
+        sf = SF_Bottom;
+      }
+      else if (format.HasFlag(DT_.DT_RIGHT))
+      {
+        sf = SF_Right;
+      }
+      else
+      {
+        sf = StringFormat.GenericDefault;
+      }
+      g.DrawString(str, font, new SolidBrush(color), rectF, sf);
+      return (int)rectF.Height;
+    }
+
     private IntPtr GetHostByName(IntPtr pName)
     {
       var name = Marshal.PtrToStringAnsi(pName);
@@ -276,7 +317,31 @@ namespace Injector
 
     private IntPtr LoadLibraryA(string fileName)
     {
-      return DllImports.LoadLibraryA(fileName);
+      if (fileName == "dpnathlp.dll")
+      {
+        return IntPtr.Zero;
+      }
+      else
+      {
+        return DllImports.LoadLibraryA(fileName);
+      }
+    }
+
+    private int LoadStringA(IntPtr instance, uint id, IntPtr buffer, int bufferMax)
+    {
+      var sb = new StringBuilder(bufferMax);
+      var ret=DllImports.LoadStringA(instance, id, sb, bufferMax);
+      if (sb.ToString() == "宋体")
+      {
+        sb.Remove(0, sb.Length);
+        sb.Append("微软雅黑");
+      }
+      var bytes = Encoding.GetEncoding("gb2312").GetBytes(sb.ToString());
+      _server.Echo($"{sb}\t{bufferMax}\t{ret}\t{bytes.Length}");
+      Marshal.Copy(bytes, 0, buffer, bytes.Length);
+      Marshal.WriteByte(buffer, bytes.Length, 0);
+
+      return ret;
     }
 
     private int Recv(int socket, IntPtr buff, int len, int flags)
@@ -358,6 +423,30 @@ namespace Injector
         _server.Echo($"{_moduleName} socket {si}");
       }
       return ret;
+    }
+
+    public bool TextOutA(IntPtr dc, int xStart, int yStart, string pStr, int strLen)
+    {
+      var g = Graphics.FromHdc(dc);
+      var align = DllImports.GetTextAlign(dc);
+      var color = DllImports.GetTextColor(dc).ToColor();
+      var font = Font.FromHdc(dc);
+      var point = new PointF(xStart, yStart);
+      StringFormat sf;
+      if (align.HasFlag(TA_.TA_BOTTOM))
+      {
+        sf = SF_Bottom;
+      }
+      else if (align.HasFlag(TA_.TA_RIGHT))
+      {
+        sf = SF_Right;
+      }
+      else
+      {
+        sf = StringFormat.GenericDefault;
+      }
+      g.DrawString(pStr, font, new SolidBrush(color), point, sf);
+      return true;
     }
 
     private SocketError WSARecv(int socket, ref WSABUF buffers, int bufferCount, out int numberOfBytesRecvd, ref int flags, IntPtr overlapped, IntPtr completionRoutine)
