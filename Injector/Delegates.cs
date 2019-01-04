@@ -19,6 +19,9 @@ namespace Injector
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate SocketError Connect(int socket, ref SockAddr addr, int addrLen);
 
+    [UnmanagedFunctionPointer(CallingConvention.Winapi,CharSet= CharSet.Ansi)]
+    public delegate IntPtr CreateFontIndirectA(ref LOGFONT lf);
+
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Ansi)]
     public delegate bool CreateProcessA(string applicationName, string commandLine, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint creationFlags, IntPtr environment, string
 currentDirectory, IntPtr startupInfo, out ProcessInformation processInformation);

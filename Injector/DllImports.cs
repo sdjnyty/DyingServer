@@ -23,6 +23,9 @@ namespace Injector
     [DllImport("kernel32")]
     public static extern void CopyMemory(IntPtr dest, IntPtr src, int count);
 
+    [DllImport("gdi32")]
+    public static extern IntPtr CreateFontIndirectA(ref LOGFONT lf);
+
     [DllImport("ws2_32", CharSet = CharSet.Ansi, ExactSpelling = true)]
     public static extern IntPtr gethostbyname(string name);
 
@@ -138,6 +141,26 @@ namespace Injector
     }
   }
 
+  [StructLayout(LayoutKind.Sequential,CharSet= System.Runtime.InteropServices.CharSet.Ansi)]
+  public struct LOGFONT
+  {
+    public int Height;
+    public int Width;
+    public int Escapement;
+    public int Orientation;
+    public int Weight;
+    public byte Italic;
+    public byte Underline;
+    public byte Strikeout;
+    public byte CharSet;
+    public byte OutPrecision;
+    public byte ClipPrecision;
+    public FontQuality Quality;
+    public byte PitchAndFamily;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)]
+    public string FaceName;
+  }
+
   [Flags]
   public enum DT_ : uint
   {
@@ -165,5 +188,16 @@ namespace Injector
     DT_NOFULLWIDTHCHARBREAK = 0x00080000,
     DT_HIDEPREFIX = 0x00100000,
     DT_PREFIXONLY = 0x00200000,
+  }
+
+  public enum FontQuality : byte
+  {
+    DEFAULT_QUALITY = 0,
+    DRAFT_QUALITY = 1,
+    PROOF_QUALITY = 2,
+    NONANTIALIASED_QUALITY = 3,
+    ANTIALIASED_QUALITY = 4,
+    CLEARTYPE_QUALITY = 5,
+    CLEARTYPE_NATURAL_QUALITY = 6,
   }
 }

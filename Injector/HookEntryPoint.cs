@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Diagnostics;
 using System.Net;
 using System.Drawing;
+using System.Windows.Forms;
 
 namespace Injector
 {
@@ -56,12 +57,14 @@ namespace Injector
       _moduleName = Process.GetCurrentProcess().ProcessName;
       DllImports.LoadLibraryA("wsock32");
       DllImports.LoadLibraryA("ws2_32");
-      var hTextOut = LocalHook.Create(LocalHook.GetProcAddress("gdi32", "TextOutA"), new Delegates.TextOutA(TextOutA), this);
-      hTextOut.ThreadACL.SetExclusiveACL(new[] { 0 });
-      var hDrawTextA = LocalHook.Create(LocalHook.GetProcAddress("user32", "DrawTextA"), new Delegates.DrawTextA(DrawTextA), this);
-      hDrawTextA.ThreadACL.SetExclusiveACL(new[] { 0 });
-      var hLoadString = LocalHook.Create(LocalHook.GetProcAddress("user32", "LoadStringA"), new Delegates.LoadStringA(LoadStringA), this);
-      hLoadString.ThreadACL.SetExclusiveACL(new[] { 0 });
+      //var hTextOut = LocalHook.Create(LocalHook.GetProcAddress("gdi32", "TextOutA"), new Delegates.TextOutA(TextOutA), this);
+      //hTextOut.ThreadACL.SetExclusiveACL(new[] { 0 });
+      //var hDrawTextA = LocalHook.Create(LocalHook.GetProcAddress("user32", "DrawTextA"), new Delegates.DrawTextA(DrawTextA), this);
+      //hDrawTextA.ThreadACL.SetExclusiveACL(new[] { 0 });
+      //var hLoadString = LocalHook.Create(LocalHook.GetProcAddress("user32", "LoadStringA"), new Delegates.LoadStringA(LoadStringA), this);
+      //hLoadString.ThreadACL.SetExclusiveACL(new[] { 0 });
+      //var hCreateFontIndirectA = LocalHook.Create(LocalHook.GetProcAddress("gdi32", "CreateFontIndirectA"), new Delegates.CreateFontIndirectA(CreateFontIndirectA), this);
+      //hCreateFontIndirectA.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hSendTo = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "sendto"), new Delegates.SendTo(SendTo), this);
       hSendTo.ThreadACL.SetExclusiveACL(new[] { 0 });
       var hRecvFrom = LocalHook.Create(LocalHook.GetProcAddress("ws2_32", "recvfrom"), new Delegates.RecvFrom(RecvFrom), this);
@@ -243,6 +246,13 @@ namespace Injector
       return true;
     }
 
+    private IntPtr CreateFontIndirectA(ref LOGFONT lf)
+    {
+      _server.Echo($"{lf.FaceName}\t{lf.Quality}");
+      lf.Quality = FontQuality.ANTIALIASED_QUALITY;
+      return DllImports.CreateFontIndirectA(ref lf);
+    }
+
     private int DrawTextA(IntPtr dc, string str, int count, ref RECT rect, DT_ format)
     {
       var g = Graphics.FromHdc(dc);
@@ -286,7 +296,7 @@ namespace Injector
 
     private SocketError GetHostName(IntPtr name, int nameLen)
     {
-      var bytes = Encoding.ASCII.GetBytes(_userId.ToString() + "\0");
+      var bytes = Encoding.Default.GetBytes(_userId.ToString() + "\0");
       Marshal.Copy(bytes, 0, name, bytes.Length);
       return SocketError.Success;
     }
@@ -425,27 +435,29 @@ namespace Injector
       return ret;
     }
 
-    public bool TextOutA(IntPtr dc, int xStart, int yStart, string pStr, int strLen)
+    private bool TextOutA(IntPtr dc, int xStart, int yStart, string str, int strLen)
     {
       var g = Graphics.FromHdc(dc);
       var align = DllImports.GetTextAlign(dc);
       var color = DllImports.GetTextColor(dc).ToColor();
       var font = Font.FromHdc(dc);
-      var point = new PointF(xStart, yStart);
-      StringFormat sf;
-      if (align.HasFlag(TA_.TA_BOTTOM))
-      {
-        sf = SF_Bottom;
-      }
-      else if (align.HasFlag(TA_.TA_RIGHT))
-      {
-        sf = SF_Right;
-      }
-      else
-      {
-        sf = StringFormat.GenericDefault;
-      }
-      g.DrawString(pStr, font, new SolidBrush(color), point, sf);
+      var point = new Point(xStart, yStart);
+      
+      TextRenderer.DrawText(g, str, font, point, color);
+      //StringFormat sf;
+      //if (align.HasFlag(TA_.TA_BOTTOM))
+      //{
+      //  sf = SF_Bottom;
+      //}
+      //else if (align.HasFlag(TA_.TA_RIGHT))
+      //{
+      //  sf = SF_Right;
+      //}
+      //else
+      //{
+      //  sf = StringFormat.GenericDefault;
+      //}
+      //g.DrawString(str, font, new SolidBrush(color), point, sf);
       return true;
     }
 
