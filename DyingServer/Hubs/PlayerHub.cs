@@ -39,31 +39,46 @@ namespace DyingServer.Hubs
       return base.OnDisconnected(stopCalled);
     }
 
-    public LoginResult Login(string userId)
+    public LoginResult Login(string userId,string passwordMd5)
     {
       var pi = PlayerInfoPool.GetByUid(userId);
       if (pi == null)
       {
-        var vip = IpPool.AllocateIp();
-        pi = new PlayerInfo
+        var success = DAL.Login(userId, passwordMd5);
+        if (success)
         {
-          UserId = userId,
-          Vip = vip,
-          ConnectionId = Context.ConnectionId,
-        };
-        PlayerInfoPool.Add(pi);
+          var vip = IpPool.AllocateIp();
+          pi = new PlayerInfo
+          {
+            UserId = userId,
+            Vip = vip,
+            ConnectionId = Context.ConnectionId,
+          };
+          PlayerInfoPool.Add(pi);
+          Clients.Others.UserLogin(userId);
+          return new LoginResult
+          {
+            Result = LoginResultKind.Success,
+            Vip = pi.Vip,
+            OnlineUsers = PlayerInfoPool.Enumerate().Select(p => p.UserId).ToList(),
+            Rooms = RoomPool.Enumerate().Select(ri => ri.RoomId).ToList(),
+          };
+        }
+        else
+        {
+          return new LoginResult
+          {
+            Result = LoginResultKind.Fail,
+          };
+        }
       }
       else
       {
-        pi.ConnectionId = Context.ConnectionId;
+        return new LoginResult
+        {
+          Result =  LoginResultKind.AlreadyLoginedIn,
+        };
       }
-      Clients.Others.UserLogin(userId);
-      return new LoginResult
-      {
-        Vip = pi.Vip,
-        OnlineUsers = PlayerInfoPool.Enumerate().Select(p => p.UserId).ToList(),
-        Rooms=RoomPool.Enumerate().Select(ri=>ri.RoomId).ToList(),
-      };
     }
 
     public void SendTo(int toIp, int toPort, int fromPort, byte[] data)
