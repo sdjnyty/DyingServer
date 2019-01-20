@@ -8,7 +8,9 @@ using System.Net.Sockets;
 using System.Diagnostics;
 using System.Net;
 using System.Drawing;
-using System.Windows.Forms;
+using SharpDX.DirectWrite;
+using SharpDX;
+using SharpDX.Direct2D1;
 
 namespace Injector
 {
@@ -41,6 +43,9 @@ namespace Injector
       Port1 = 123,
       Port2 = 123,
     };
+    private SharpDX.DirectWrite.Factory _factory = new SharpDX.DirectWrite.Factory();
+    private RenderingParams _rp;
+    private string _lastTextOutString;
 
     public HookEntryPoint(RemoteHooking.IContext context, string channel, string dllPath, int vip, string userId)
     {
@@ -50,6 +55,7 @@ namespace Injector
       _dllPath = dllPath;
       _vip = vip;
       _userId = userId;
+      _rp = new RenderingParams(_factory);
     }
 
     public void Run(RemoteHooking.IContext context, string channel, string dllPath, int vip, string userId)
@@ -57,8 +63,8 @@ namespace Injector
       _moduleName = Process.GetCurrentProcess().ProcessName;
       DllImports.LoadLibraryA("wsock32");
       DllImports.LoadLibraryA("ws2_32");
-      //var hTextOut = LocalHook.Create(LocalHook.GetProcAddress("gdi32", "TextOutA"), new Delegates.TextOutA(TextOutA), this);
-      //hTextOut.ThreadACL.SetExclusiveACL(new[] { 0 });
+      var hTextOut = LocalHook.Create(LocalHook.GetProcAddress("gdi32", "TextOutA"), new Delegates.TextOutA(TextOutA), this);
+      hTextOut.ThreadACL.SetExclusiveACL(new[] { 0 });
       //var hDrawTextA = LocalHook.Create(LocalHook.GetProcAddress("user32", "DrawTextA"), new Delegates.DrawTextA(DrawTextA), this);
       //hDrawTextA.ThreadACL.SetExclusiveACL(new[] { 0 });
       //var hLoadString = LocalHook.Create(LocalHook.GetProcAddress("user32", "LoadStringA"), new Delegates.LoadStringA(LoadStringA), this);
@@ -256,7 +262,7 @@ namespace Injector
     private int DrawTextA(IntPtr dc, string str, int count, ref RECT rect, DT_ format)
     {
       var g = Graphics.FromHdc(dc);
-      var font = Font.FromHdc(dc);
+      var font = System.Drawing.Font.FromHdc(dc);
       var rectF = rect.ToRectangleF();
       var color = DllImports.GetTextColor(dc).ToColor();
       StringFormat sf;
@@ -340,7 +346,7 @@ namespace Injector
     private int LoadStringA(IntPtr instance, uint id, IntPtr buffer, int bufferMax)
     {
       var sb = new StringBuilder(bufferMax);
-      var ret=DllImports.LoadStringA(instance, id, sb, bufferMax);
+      var ret = DllImports.LoadStringA(instance, id, sb, bufferMax);
       if (sb.ToString() == "宋体")
       {
         sb.Remove(0, sb.Length);
@@ -437,13 +443,32 @@ namespace Injector
 
     private bool TextOutA(IntPtr dc, int xStart, int yStart, string str, int strLen)
     {
-      var g = Graphics.FromHdc(dc);
-      var align = DllImports.GetTextAlign(dc);
-      var color = DllImports.GetTextColor(dc).ToColor();
-      var font = Font.FromHdc(dc);
-      var point = new Point(xStart, yStart);
-      
-      TextRenderer.DrawText(g, str, font, point, color);
+      if (str == _lastTextOutString) return true;
+
+      _lastTextOutString = str;
+      Color color;
+      using (var g = Graphics.FromHdc(dc))
+      {
+        color = DllImports.GetTextColor(dc).ToColor();
+        if (color.ToArgb() == Color.Black.ToArgb())
+        {
+          color = Color.DarkGray;
+        }
+      }
+      using (var font = System.Drawing.Font.FromHdc(dc))
+      using (var tf = new TextFormat(_factory, font.Name, font.Size))
+      using (var tl = new TextLayout(_factory, str, tf, float.MaxValue, float.MaxValue))
+      using (var brt = _factory.GdiInterop.CreateBitmapRenderTarget(dc, 1920, 1080))
+      using (var gtr = new GdiTextRenderer(brt, _rp,color))
+      {
+        tl.Draw(gtr, 0, 0);
+        var r = gtr.BlackBoxRect;
+        var width = r.Right - r.Left;
+        _server.Echo($"{xStart},{yStart} {str} {r.Left},{r.Top}-{r.Right},{r.Bottom}");
+        var height = r.Bottom - r.Top;
+        DllImports.TransparentBlt(dc, xStart, yStart, width,height , brt.MemoryDC, 0, 0, width,height,Color.Black.ToArgb());
+      }
+
       //StringFormat sf;
       //if (align.HasFlag(TA_.TA_BOTTOM))
       //{
@@ -506,6 +531,28 @@ namespace Injector
 
   }
 
+  public class GdiTextRenderer : TextRendererBase
+  {
+    private SharpDX.DirectWrite.BitmapRenderTarget _brt;
+    private RenderingParams _rp;
+    private Color _color;
+
+    public SharpDX.Mathematics.Interop.RawRectangle BlackBoxRect { get; set; }
+
+    public GdiTextRenderer(SharpDX.DirectWrite.BitmapRenderTarget brt, RenderingParams rp,Color color)
+    {
+      _brt = brt;
+      _rp = rp;
+      _color = color;
+    }
+
+    public override Result DrawGlyphRun(object clientDrawingContext, float baselineOriginX, float baselineOriginY, MeasuringMode measuringMode, GlyphRun glyphRun, GlyphRunDescription glyphRunDescription, ComObject clientDrawingEffect)
+    {
+      _brt.DrawGlyphRun(baselineOriginX, baselineOriginY, measuringMode, glyphRun, _rp, new SharpDX.Mathematics.Interop.RawColorBGRA(_color.B, _color.G, _color.R, _color.A),out var rect);
+      BlackBoxRect = rect;
+      return Result.Ok;
+    }
+  }
   [StructLayout(LayoutKind.Sequential)]
   public struct ProcessInformation
   {

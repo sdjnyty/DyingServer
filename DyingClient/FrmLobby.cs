@@ -447,7 +447,7 @@ namespace DyingClient
       _serverInterface.Port53754Bind += _serverInterface_Port53754Bind;
       var dllPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Injector.dll");
       var _ = SetupSockets();
-      RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), $"HOST_IP_LAUNCH \"{_userId}\"", 0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
+      RemoteHooking.CreateAndInject(Path.Combine(exePath, @"age2_x1\age2_wk.exe"), $"HOST_IP_LAUNCH \"{_userId}\" REC=1", 0, dllPath, dllPath, out var pid, channel, dllPath, _vip, _userId);
       var process = Process.GetProcessById(pid);
       AppendLine("游戏已启动");
       await _hp.Invoke("HostStartGame");
