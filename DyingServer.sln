@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Injector", "Injector\Inject
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "POCO", "POCO\POCO.csproj", "{13ED03DB-2315-49D3-B61C-010C720B6B8A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DyingClientWpf", "DyingClientWpf\DyingClientWpf.csproj", "{71F6A8E5-DCA6-4C17-91C7-6FC3ED60F5FF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{13ED03DB-2315-49D3-B61C-010C720B6B8A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{13ED03DB-2315-49D3-B61C-010C720B6B8A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{13ED03DB-2315-49D3-B61C-010C720B6B8A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{71F6A8E5-DCA6-4C17-91C7-6FC3ED60F5FF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{71F6A8E5-DCA6-4C17-91C7-6FC3ED60F5FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{71F6A8E5-DCA6-4C17-91C7-6FC3ED60F5FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{71F6A8E5-DCA6-4C17-91C7-6FC3ED60F5FF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
