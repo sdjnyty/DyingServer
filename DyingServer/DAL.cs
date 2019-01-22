@@ -23,9 +23,10 @@ namespace DyingServer
 
     public static bool Login(string userId, string passwordMd5)
     {
+      passwordMd5 = passwordMd5.ToLowerInvariant();
       using (var c = GetConnection())
       {
-        return c.QueryFirstOrDefault<bool>("SELECT `password`=md5(concat(md5(@passwordMd5),`salt`)) FROM `x15_ucenter_members` WHERE `username`=@userId",new{userId,passwordMd5});
+        return c.QueryFirstOrDefault<bool>("SELECT `password`=md5(concat(@passwordMd5,`salt`)) FROM `x15_ucenter_members` WHERE `username`=@userId",new{userId,passwordMd5});
       }
     }
   }

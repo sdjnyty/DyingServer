@@ -13,5 +13,26 @@ namespace DyingClientWpf
   /// </summary>
   public partial class App : Application
   {
+    private void Application_Startup(object sender, StartupEventArgs e)
+    {
+     Program. LoginWindow = new LoginWindow();
+      var result=Program.LoginWindow.ShowDialog();
+      if(result==true)
+      {
+        Program.LobbyWindow = new LobbyWindow();
+        Program.LobbyWindow.Show();
+      }
+    }
+  }
+
+  public static class Program
+  {
+    public static LoginWindow LoginWindow;
+    public static LobbyWindow LobbyWindow;
+
+    public static void Shutdown()
+    {
+      Application.Current.Shutdown();
+    }
   }
 }
