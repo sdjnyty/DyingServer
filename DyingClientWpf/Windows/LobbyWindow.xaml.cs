@@ -1,5 +1,6 @@
 ﻿using System.Windows;
 using System.ComponentModel;
+using System.Linq;
 
 namespace DyingClientWpf
 {
@@ -25,6 +26,13 @@ namespace DyingClientWpf
         SignalRClient.Stop();
         Program.Shutdown();
       }
+    }
+
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+      var rooms=await SignalRClient.GetRooms();
+      lvwRooms.DataContext = rooms.Select(r => new RoomViewModel(r)).ToList();
+      
     }
   }
 }

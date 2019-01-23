@@ -8,20 +8,34 @@
         Title="LobbyWindow"
         Height="768"
         Width="1024"
+        Loaded="Window_Loaded"
         Closing="Window_Closing">
   <Grid>
     <Grid.ColumnDefinitions>
       <ColumnDefinition></ColumnDefinition>
       <ColumnDefinition></ColumnDefinition>
     </Grid.ColumnDefinitions>
-    <ListView Grid.Column="0"></ListView>
+    <ItemsControl x:Name="lvwRooms"
+              Grid.Column="0">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <WrapPanel></WrapPanel>
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate>
+          <TextBlock Text="{Binding Path=Number}"></TextBlock>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
     <Grid Grid.Column="1">
       <Grid.RowDefinitions>
         <RowDefinition></RowDefinition>
         <RowDefinition></RowDefinition>
       </Grid.RowDefinitions>
       <TextBlock Grid.Row="0"></TextBlock>
-      <Button Grid.Row="1" Content="创建房间"></Button>
+      <Button Grid.Row="1"
+              Content="创建房间"></Button>
     </Grid>
   </Grid>
 </Window>

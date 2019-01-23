@@ -22,15 +22,20 @@ namespace DyingClientWpf
       _hp=_hc.CreateHubProxy("PlayerHub");
     }
 
-    public static  async Task<LoginResult> Login(string userId,string passwordMd5)
+    public static  async Task<Tuple<SignalRResult,int>> Login(string userId,string passwordMd5)
     {
       await _hc.Start();
-      return await _hp.Invoke<LoginResult>("Login", userId, passwordMd5);
+      return await _hp.Invoke<Tuple<SignalRResult,int>>(nameof(Login), userId, passwordMd5);
     }
 
     public static void Stop()
     {
       _hc.Stop();
+    }
+
+    public static async Task< IReadOnlyList<RoomInfo>> GetRooms()
+    {
+      return await _hp.Invoke< IReadOnlyList<RoomInfo>>(nameof(GetRooms));
     }
 
     private static void _hc_Closed()

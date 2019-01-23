@@ -17,8 +17,8 @@ namespace DyingClientWpf
     {
       btnLogin.IsEnabled = false;
       var md5 = Util.HashMd5(pwdPassword.Password);
-      var lr = await SignalRClient.Login(txxUserId.Text, md5);
-      switch (lr.Result)
+      var tup = await SignalRClient.Login(txxUserId.Text, md5);
+      switch (tup.Item1)
       {
         case SignalRResult.Success:
           DialogResult = true;

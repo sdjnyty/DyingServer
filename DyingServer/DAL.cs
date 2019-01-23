@@ -33,18 +33,18 @@ namespace DyingServer
       passwordMd5 = passwordMd5.ToLowerInvariant();
       using (var c = GetConnection())
       {
-        var tup= c.QueryFirstOrDefault<Tuple<int,bool>>("SELECT `uid`,`password`=md5(concat(@passwordMd5,`salt`)) FROM `x15_ucenter_members` WHERE `username`=@userId",new{userId = userName,passwordMd5});
-        if (tup == null)
+        var result= c.QueryFirstOrDefault("SELECT `uid` AS `UserId`,`password`=md5(concat(@passwordMd5,`salt`)) AS `GoodPwd` FROM `x15_ucenter_members` WHERE `username`=@userId",new{userId = userName,passwordMd5});
+        if (result == null)
         {
           return 0;
         }
-        else if (!tup.Item2)
+        else if (result.GoodPwd==0)
         {
           return 0;
         }
         else
         {
-          return tup.Item1;
+          return (int)result.UserId;
         }
       }
     }

@@ -22,6 +22,10 @@ namespace DyingClientWpf
         Program.LobbyWindow = new LobbyWindow();
         Program.LobbyWindow.Show();
       }
+      else
+      {
+        Shutdown();
+      }
     }
   }
 
