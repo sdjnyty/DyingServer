@@ -11,6 +11,8 @@ namespace DyingServer.Hubs
 {
   public class PlayerHub : Hub<IPlayerClient>
   {
+    private const string GROUP_NAME_LOBBY = "Lobby";
+
     public override Task OnConnected()
     {
       return base.OnConnected();
@@ -39,45 +41,48 @@ namespace DyingServer.Hubs
       return base.OnDisconnected(stopCalled);
     }
 
-    public LoginResult Login(string userId,string passwordMd5)
+    public LoginResult Login(string userName, string passwordMd5)
     {
-      var pi = PlayerInfoPool.GetByUid(userId);
-      if (pi == null)
+      var userId = DAL.Login(userName, passwordMd5);
+      if (userId == 0)
       {
-        var success = DAL.Login(userId, passwordMd5);
-        if (success)
+        return new LoginResult
+        {
+          Result = SignalRResult.BadPassword,
+        };
+      }
+      else
+      {
+        var pi = PlayerInfoPool.GetByUid(userId);
+        if (pi == null)
         {
           var vip = IpPool.AllocateIp();
           pi = new PlayerInfo
           {
-            UserId = userId,
+            Id = userId,
+            Name = userName,
             Vip = vip,
             ConnectionId = Context.ConnectionId,
+            State = PlayerState.InLobby,
           };
           PlayerInfoPool.Add(pi);
-          Clients.Others.UserLogin(userId);
+          Clients.Group(GROUP_NAME_LOBBY).UserLogin(pi.ToUserInfo());
+          Groups.Add(Context.ConnectionId, GROUP_NAME_LOBBY);
           return new LoginResult
           {
-            Result = LoginResultKind.Success,
+            Result = SignalRResult.Success,
             Vip = pi.Vip,
-            OnlineUsers = PlayerInfoPool.Enumerate().Select(p => p.UserId).ToList(),
-            Rooms = RoomPool.Enumerate().Select(ri => ri.RoomId).ToList(),
+            OnlineUsers = PlayerInfoPool.Enumerate().Select(p => p.ToUserInfo()).ToList(),
+            Rooms = RoomPool.Enumerate(),
           };
         }
         else
         {
           return new LoginResult
           {
-            Result = LoginResultKind.Fail,
+            Result = SignalRResult.AlreadyLoginedIn,
           };
         }
-      }
-      else
-      {
-        return new LoginResult
-        {
-          Result =  LoginResultKind.AlreadyLoginedIn,
-        };
       }
     }
 
@@ -128,44 +133,58 @@ namespace DyingServer.Hubs
       Clients.Group($"{fromPlayer.RoomId}:spec").EndRec();
     }
 
-    public async Task<string> CreateRoom()
+    public async Task<RoomInfo> CreateRoom(RoomInfo request)
     {
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
-      var roomId = fromPlayer.UserId + " 的房间";
-      var ri = new RoomInfo
+      var ri = RoomPool.GetById(request.Id);
+      if (ri.State == RoomState.CanHost)
       {
-        HostId = fromPlayer.UserId,
-        RoomId = roomId,
-      };
-      ri.Players.Add(fromPlayer.UserId);
-      RoomPool.Add(ri);
-      fromPlayer.RoomId = roomId;
-      await Groups.Add(fromPlayer.ConnectionId, roomId);
-      await Groups.Add(fromPlayer.ConnectionId, $"{roomId}:player");
-      Clients.Others.CreateRoom(roomId);
-      return roomId;
+        ri.HostId = fromPlayer.Id;
+        ri.Name = request.Name;
+        ri.State = RoomState.CanJoin;
+        ri.Players.Add(fromPlayer.Id);
+        ri.MaxPlayers = request.MaxPlayers;
+        fromPlayer.RoomId = request.Id;
+        fromPlayer.State = PlayerState.InRoom;
+        await Groups.Remove(Context.ConnectionId, GROUP_NAME_LOBBY);
+        await Groups.Add(fromPlayer.ConnectionId, ri.Id.ToString());
+        Clients.Group(GROUP_NAME_LOBBY).CreateRoom(ri);
+        return ri;
+      }
+      else
+      {
+        return null;
+      }
     }
 
-    public async Task DestroyRoom()
+    public async Task<Tuple<SignalRResult, RoomInfo>> JoinRoom(int roomId)
     {
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
-      Clients.Others.DestroyRoom(fromPlayer.RoomId);
-      var ri = RoomPool.GetById(fromPlayer.RoomId);
-      RoomPool.Remove(ri);
-      await Groups.Remove(fromPlayer.ConnectionId, ri.RoomId);
-      await Groups.Remove(fromPlayer.ConnectionId, $"{ri.RoomId}:player");
-      fromPlayer.RoomId = null;
-    }
-
-    public async Task<RoomInfo> JoinRoom(string roomId)
-    {
-      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
-      fromPlayer.RoomId = roomId;
       var ri = RoomPool.GetById(roomId);
-      ri.Players.Add(fromPlayer.UserId);
-      Clients.Group(roomId).JoinRoom(roomId, fromPlayer.UserId);
-      await Groups.Add(fromPlayer.ConnectionId, roomId);
-      await Groups.Add(fromPlayer.ConnectionId, $"{roomId}:player");
+      if (ri.Players.Count < ri.MaxPlayers)
+      {
+        ri.Players.Add(fromPlayer.Id);
+        Clients.Group(roomId.ToString()).JoinRoom(ri, fromPlayer.ToUserInfo());
+        await Groups.Add(fromPlayer.ConnectionId, roomId.ToString());
+        fromPlayer.RoomId = roomId;
+        fromPlayer.State = PlayerState.InRoom;
+        return Tuple.Create(SignalRResult.Success, ri);
+      }
+      else
+      {
+        return Tuple.Create(SignalRResult.RoomFull, ri);
+      }
+    }
+
+    public async Task<RoomInfo> SpectateRoom(int roomId)
+    {
+      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
+      var ri = RoomPool.GetById(roomId);
+      ri.Spectators.Add(fromPlayer.Id);
+      Clients.Group(roomId.ToString()).SpectateRoom(ri, fromPlayer.ToUserInfo());
+      await Groups.Add(fromPlayer.ConnectionId, roomId.ToString());
+      fromPlayer.RoomId = roomId;
+      fromPlayer.State = PlayerState.InRoom;
       return ri;
     }
 
@@ -173,18 +192,24 @@ namespace DyingServer.Hubs
     {
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
       var ri = RoomPool.GetById(fromPlayer.RoomId);
-      ri.Players.Remove(fromPlayer.UserId);
-      await Groups.Remove(fromPlayer.ConnectionId, ri.RoomId);
-      if (ri.Players.Contains(fromPlayer.UserId))
+      if (ri.Players.Contains(fromPlayer.Id))
+        //是游戏者退出房间
       {
-        await Groups.Remove(fromPlayer.ConnectionId, $"{ri.RoomId}:player");
+        ri.Players.Remove(fromPlayer.Id);
+        fromPlayer.State = PlayerState.InLobby;
+        await Groups.Remove(fromPlayer.ConnectionId, ri.Id.ToString());
+        await Groups.Add(fromPlayer.ConnectionId, GROUP_NAME_LOBBY);
+        if (ri.HostId == fromPlayer.Id)
+        {
+          if (ri.Players.Count > 0)
+            //是房主退出房间，且还有游戏者，则移交房主
+          {
+            var newHost = ri.Players[0];
+            ri.HostId = newHost;
+          }
+        }
       }
-      else if (ri.Spectators.Contains(fromPlayer.UserId))
-      {
-        await Groups.Remove(fromPlayer.ConnectionId, $"{ri.RoomId}:spec");
-      }
-      Clients.Group(ri.RoomId).LeaveRoom(fromPlayer.UserId);
-      fromPlayer.RoomId = null;
+      Clients.Group(ri.Id.ToString()).LeaveRoom(fromPlayer.ToUserInfo());
     }
 
     public int GetHostVipByRoomId(string roomId)
@@ -204,18 +229,6 @@ namespace DyingServer.Hubs
       Clients.OthersInGroup($"{fromPlayer.RoomId}:player").RunGame();
     }
 
-    public async Task<RoomInfo> SpectateRoom(string roomId)
-    {
-      var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
-      fromPlayer.RoomId = roomId;
-      var ri = RoomPool.GetById(roomId);
-      ri.Spectators.Add(fromPlayer.UserId);
-      Clients.Group(roomId).SpectateRoom(roomId, fromPlayer.UserId);
-      await Groups.Add(fromPlayer.ConnectionId, roomId);
-      await Groups.Add(fromPlayer.ConnectionId, $"{roomId}:spec");
-      return ri;
-    }
-
     public void Chat(string message)
     {
       var fromPlayer = PlayerInfoPool.GetByCid(Context.ConnectionId);
@@ -223,6 +236,11 @@ namespace DyingServer.Hubs
       {
         Clients.Group(fromPlayer.RoomId).Chat(fromPlayer.UserId, message);
       }
+    }
+
+    private static string GetChatGroupName(RoomInfo ri)
+    {
+      return ri.ToString();
     }
   }
 
@@ -232,15 +250,15 @@ namespace DyingServer.Hubs
     void OnReceiveFrom(int fromIp, int fromPort, int toPort, byte[] data);
     void OnTcpConnect(int fromIp, int fromPort, int toPort);
     void OnTcpSend(int fromIp, int fromPort, int toPort, byte[] data);
-    void UserLogin(string userId);
+    void UserLogin(UserInfo ui);
     void UserLogout(string userId);
-    void CreateRoom(string roomId);
-    void JoinRoom(string roomId, string userId);
+    void CreateRoom(RoomInfo ri);
+    void JoinRoom(RoomInfo ri, UserInfo ui);
     void DestroyRoom(string roomId);
-    void LeaveRoom(string userId);
+    void LeaveRoom(UserInfo ui);
     void HostStartGame();
     void RunGame();
-    void SpectateRoom(string roomId, string userId);
+    void SpectateRoom(RoomInfo ri, UserInfo ui);
     void UploadRec(byte[] data);
     void RunSpectate();
     void EndRec();

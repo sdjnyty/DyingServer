@@ -1,33 +1,26 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web;
 using POCO;
 
 namespace DyingServer
 {
   public static class RoomPool
   {
-    private static Dictionary<string, RoomInfo> _idDic = new Dictionary<string, RoomInfo>();
+    private const int NumRooms = 200;
+    private static List<RoomInfo> _roomList =
+      Enumerable.Range(0, NumRooms)
+        .Select(i => new RoomInfo { Id = i })
+        .ToList();
 
-    public static void Add(RoomInfo ri)
+    public static RoomInfo GetById(int rid)
     {
-      _idDic.Add(ri.RoomId, ri);
+      return _roomList[rid];
     }
 
-    public static void Remove(RoomInfo ri)
+    public static IReadOnlyList<RoomInfo> Enumerate()
     {
-      _idDic.Remove(ri.RoomId);
-    }
-
-    public static RoomInfo GetById(string rid)
-    {
-      return _idDic[rid];
-    }
-
-    public static IEnumerable<RoomInfo> Enumerate()
-    {
-      return _idDic.Values;
+      return _roomList;
     }
   }
 }

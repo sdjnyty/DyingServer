@@ -1,4 +1,5 @@
-﻿using MySql.Data.MySqlClient;
+﻿using System;
+using MySql.Data.MySqlClient;
 using Dapper;
 
 namespace DyingServer
@@ -21,12 +22,30 @@ namespace DyingServer
       return ret;
     }
 
-    public static bool Login(string userId, string passwordMd5)
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="userName"></param>
+    /// <param name="passwordMd5"></param>
+    /// <returns>登录成功返回userId；用户名不存在或密码错误返回0</returns>
+    public static int Login(string userName, string passwordMd5)
     {
       passwordMd5 = passwordMd5.ToLowerInvariant();
       using (var c = GetConnection())
       {
-        return c.QueryFirstOrDefault<bool>("SELECT `password`=md5(concat(@passwordMd5,`salt`)) FROM `x15_ucenter_members` WHERE `username`=@userId",new{userId,passwordMd5});
+        var tup= c.QueryFirstOrDefault<Tuple<int,bool>>("SELECT `uid`,`password`=md5(concat(@passwordMd5,`salt`)) FROM `x15_ucenter_members` WHERE `username`=@userId",new{userId = userName,passwordMd5});
+        if (tup == null)
+        {
+          return 0;
+        }
+        else if (!tup.Item2)
+        {
+          return 0;
+        }
+        else
+        {
+          return tup.Item1;
+        }
       }
     }
   }

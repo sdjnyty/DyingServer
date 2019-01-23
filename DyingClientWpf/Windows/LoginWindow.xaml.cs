@@ -20,14 +20,14 @@ namespace DyingClientWpf
       var lr = await SignalRClient.Login(txxUserId.Text, md5);
       switch (lr.Result)
       {
-        case LoginResultKind.Success:
+        case SignalRResult.Success:
           DialogResult = true;
           Close();
           break;
-        case LoginResultKind.Fail:
+        case SignalRResult.BadPassword:
           MessageBox.Show("用户名或密码不正确");
           break;
-        case LoginResultKind.AlreadyLoginedIn:
+        case SignalRResult.AlreadyLoginedIn:
           MessageBox.Show("用户已经登录，退出后方可再次登录");
           Close();
           break;

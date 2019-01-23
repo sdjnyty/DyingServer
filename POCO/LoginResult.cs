@@ -4,16 +4,17 @@ namespace POCO
 {
   public class LoginResult
   {
-    public LoginResultKind Result { get; set; }
+    public SignalRResult Result { get; set; }
     public int Vip { get; set; }
-    public List<string> OnlineUsers { get; set; }
-    public List<string> Rooms { get; set; }
+    public IReadOnlyList<UserInfo> OnlineUsers { get; set; }
+    public IReadOnlyList<RoomInfo> Rooms { get; set; }
   }
 
-  public enum LoginResultKind
+  public enum SignalRResult
   {
     Success,
-    Fail,
+    BadPassword,
     AlreadyLoginedIn,
+    RoomFull,
   }
 }
